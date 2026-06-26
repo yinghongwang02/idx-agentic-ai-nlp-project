@@ -1,6 +1,11 @@
-python>=3.11
-langchain
-langgraph
-openai
 pandas
-numpy
+pydantic
+python-dotenv
+langgraph
+langchain
+langchain-openai
+openai
+streamlit
+pytest
+ruff
+black
