@@ -1,0 +1,6 @@
+listing_id,address,city,zip_code,property_type,list_price,bedrooms,bathrooms,living_area,association_fee,days_on_market,remarks
+L001,123 Main St,Irvine,92618,Condo,850000,3,2,1450,280,21,Modern condo near shopping and parks
+L002,88 Lake Ave,Irvine,92620,Single Family,1250000,4,3,2200,120,12,Updated home with spacious backyard
+L003,45 Palm Dr,Anaheim,92801,Townhouse,720000,3,2.5,1600,350,45,Townhouse with attached garage
+L004,900 Sunset Blvd,Los Angeles,90028,Condo,950000,2,2,1200,500,60,Luxury condo with city views
+L005,17 Cedar Ct,Irvine,92612,Single Family,1100000,3,2,1800,0,35,Single family home close to schools

@@ -2,7 +2,6 @@
 __pycache__/
 *.pyc
 .env
-.env.example
 .ipynb_checkpoints/
 .pytest_cache/
 .ruff_cache/
