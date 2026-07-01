@@ -1,10 +1,13 @@
+from src.schemas.listing_schema import ListingSchema
+
+
 class RecommendationAgent:
-    def run(self, listings: list[dict]) -> list[dict]:
+    def run(self, listings: list[ListingSchema]) -> list[ListingSchema]:
         ranked = sorted(
             listings,
-            key=lambda x: (
-                x.get("days_on_market", 999),
-                x.get("list_price", 999999999),
+            key=lambda listing: (
+                listing.days_on_market if listing.days_on_market is not None else 999,
+                listing.list_price,
             ),
         )
 

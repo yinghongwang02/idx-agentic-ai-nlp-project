@@ -3,23 +3,28 @@ from src.agents.search_agent import SearchAgent
 from src.agents.compliance_agent import ComplianceAgent
 from src.agents.recommendation_agent import RecommendationAgent
 from src.agents.explanation_agent import ExplanationAgent
+from src.schemas.state_schema import AgentState
 
 
 def run_mock_workflow(user_query: str) -> str:
+    state: AgentState = {
+        "user_query": user_query,
+    }
+
     intent_agent = IntentAgent()
     search_agent = SearchAgent()
     compliance_agent = ComplianceAgent()
     recommendation_agent = RecommendationAgent()
     explanation_agent = ExplanationAgent()
 
-    intent = intent_agent.run(user_query)
-    listings = search_agent.run(intent)
-    compliance_status = compliance_agent.run(user_query)
-    recommendations = recommendation_agent.run(listings)
-    final_answer = explanation_agent.run(recommendations)
+    state["intent"] = intent_agent.run(state["user_query"])
+    state["listings"] = search_agent.run(state["intent"])
+    state["compliance_status"] = compliance_agent.run(state["user_query"])
+    state["recommendations"] = recommendation_agent.run(state["listings"])
+    state["final_answer"] = explanation_agent.run(state["recommendations"])
 
     return (
-        f"Compliance status: {compliance_status}\n\n"
-        f"Parsed intent: {intent.model_dump()}\n\n"
-        f"{final_answer}"
+        f"Compliance status: {state['compliance_status']}\n\n"
+        f"Parsed intent: {state['intent'].model_dump()}\n\n"
+        f"{state['final_answer']}"
     )
