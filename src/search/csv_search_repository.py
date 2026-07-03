@@ -29,8 +29,10 @@ class CSVSearchRepository(SearchRepository):
                 df["property_sub_type"]
                 .fillna("")
                 .str.lower()
-                .str.contains(intent.property_type.lower())
+                .str.contains(intent.property_type.lower(), regex=False)
             ]
+
+        df = self._filter_keywords(df, intent.keywords)
 
         df = df.where(pd.notnull(df), None)
         records = df.head(limit).to_dict(orient="records")
@@ -43,3 +45,30 @@ class CSVSearchRepository(SearchRepository):
                 record["close_date"] = str(record["close_date"])
 
         return [ListingSchema(**record) for record in records]
+
+    # AND keyword search
+    def _filter_keywords(
+        self,
+        df: pd.DataFrame,
+        keywords: list[str],
+    ) -> pd.DataFrame:
+        if not keywords:
+            return df
+
+        if "public_remarks" not in df.columns:
+            return df
+
+        remarks = df["public_remarks"].fillna("").str.lower()
+
+        for keyword in keywords:
+            keyword_lower = keyword.lower()
+
+            mask = remarks.str.contains(
+                keyword_lower,
+                regex=False,
+            )
+
+            df = df[mask]
+            remarks = remarks[mask]
+
+        return df

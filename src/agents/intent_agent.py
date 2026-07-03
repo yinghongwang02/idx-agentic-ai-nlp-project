@@ -1,19 +1,105 @@
+import re
+
 from src.schemas.intent_schema import PropertyIntent
 
 
 class IntentAgent:
-    def run(self, user_query: str) -> PropertyIntent:
-        query = user_query.lower()
+    CITY_CANDIDATES = [
+        "Irvine",
+        "Newport Beach",
+        "Pasadena",
+        "Los Angeles",
+        "San Diego",
+        "Santa Monica",
+    ]
+    PROPERTY_TYPE_MAP = {
+        "condo": "Condo",
+        "condos": "Condo",
+        "condominium": "Condo",
+        "townhouse": "Townhouse",
+        "townhome": "Townhouse",
+        "single family": "Single Family Residence",
+        "single-family": "Single Family Residence",
+        "single family home": "Single Family Residence",
+        "house": "Single Family Residence",
+    }
+    KEYWORD_CANDIDATES = [
+        "pool",
+        "view",
+        "views",
+        "garage",
+        "backyard",
+        "luxury",
+        "modern",
+        "shopping",
+        "parks",
+        "schools",
+    ]
 
-        intent = PropertyIntent()
+    def run(self, query: str) -> PropertyIntent:
+        query_lower = query.lower()
 
-        if "irvine" in query:
-            intent.city = "Irvine"
+        return PropertyIntent(
+            city=self._parse_city(query_lower),
+            max_price=self._parse_max_price(query_lower),
+            min_bedrooms=self._parse_min_bedrooms(query_lower),
+            min_bathrooms=self._parse_min_bathrooms(query_lower),
+            property_type=self._parse_property_type(query_lower),
+            keywords=self._parse_keywords(query_lower),
+        )
 
-        if "3" in query and "bed" in query:
-            intent.min_bedrooms = 3
+    def _parse_city(self, query_lower: str) -> str | None:
+        for city in self.CITY_CANDIDATES:
+            if city.lower() in query_lower:
+                return city
+        return None
 
-        if "900k" in query or "900,000" in query:
-            intent.max_price = 900000
+    def _parse_max_price(self, query_lower: str) -> int | None:
+        patterns = [
+            r"(?:under|below|less than|max|up to)\s*\$?([\d,.]+)\s*(k|m|million)?",
+            r"\$?([\d,.]+)\s*(k|m|million)\s*(?:budget|max)?",
+        ]
 
-        return intent
+        for pattern in patterns:
+            match = re.search(pattern, query_lower)
+            if not match:
+                continue
+
+            value = float(match.group(1).replace(",", ""))
+            suffix = match.group(2)
+
+            if suffix == "k":
+                value *= 1_000
+            elif suffix in {"m", "million"}:
+                value *= 1_000_000
+
+            return int(value)
+
+        return None
+
+    def _parse_min_bedrooms(self, query_lower: str) -> int | None:
+        match = re.search(
+            r"(\d+)\s*[- ]?\s*(bed|beds|bedroom|bedrooms)",
+            query_lower,
+        )
+        return int(match.group(1)) if match else None
+
+    def _parse_min_bathrooms(self, query_lower: str) -> float | None:
+        match = re.search(
+            r"(\d+(?:\.5)?)\s*[- ]?\s*(bath|baths|bathroom|bathrooms)",
+            query_lower,
+        )
+        return float(match.group(1)) if match else None
+
+    def _parse_property_type(self, query_lower: str) -> str | None:
+        for phrase, normalized_type in self.PROPERTY_TYPE_MAP.items():
+            if phrase in query_lower:
+                return normalized_type
+        return None
+
+    def _parse_keywords(self, query_lower: str) -> list[str]:
+        return [
+            keyword
+            for keyword in self.KEYWORD_CANDIDATES
+            if keyword in query_lower
+        ]
