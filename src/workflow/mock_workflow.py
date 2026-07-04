@@ -27,7 +27,7 @@ def run_mock_workflow(user_query: str) -> str:
     state["listings"] = search_agent.run(state["intent"])
     state["compliance_status"] = compliance_agent.run(state["user_query"])
     state["recommendations"] = recommendation_agent.run(state["listings"])
-    state["final_answer"] = explanation_agent.run(state["recommendations"])
+    state["final_answer"] = explanation_agent.run(state["intent"], state["recommendations"])
 
     return (
         f"Compliance status: {state['compliance_status']}\n\n"
