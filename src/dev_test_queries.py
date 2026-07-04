@@ -12,6 +12,12 @@ def main() -> None:
         "Find townhouses with garage",
         "Luxury condos in Los Angeles under 1m with views",
         "Show 3 bedroom homes in Irvine close to schools",
+        "Show condos in Irvine", 
+        "Find single family homes in Irvine", 
+        " Find 4 bedroom homes", 
+        " Show homes with at least 2 bathrooms", 
+        " Find homes in Los Angeles", 
+        " Find townhouses in Anaheim", 
     ]
 
     for query in queries:

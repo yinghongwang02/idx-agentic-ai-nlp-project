@@ -2,103 +2,169 @@
 
 ## Overview
 
-This project explores a modular multi-agent workflow for real estate search and recommendation.
+This repository contains my individual project work for the IDX Exchange Summer 2026 internship.
 
-The current implementation focuses on building the engineering foundation of an extensible agentic AI system before integrating real LLMs, MLS databases, and Retrieval-Augmented Generation (RAG).
+The project explores an Agentic AI workflow for natural language property search. Users can describe property requirements in natural language, and the system converts the request into a structured search intent, retrieves matching MLS-style listings, ranks the results, and generates explanations for each recommendation.
 
----
-
-## Current Features (Week 1)
-
-- Modular multi-agent workflow prototype
-- Structured property intent parsing
-- Property search over MLS-style sample listings
-- Rule-based property recommendation
-- Template-based response generation
-- Typed workflow contracts using Pydantic
+The current prototype uses a small MLS-style sample dataset for local development and workflow validation. The search layer is designed to be replaced by a production database without changing the agent workflow.
 
 ---
 
-## Current Workflow
+## Current Features
 
-```text
-                User Query
-                     │
-                     ▼
-              Workflow Controller
-                     │
-                     ▼
-              Intent Agent
-                     │
-                     ▼
-              Search Agent
-                     │
-                     ▼
-         Recommendation Agent
-                     │
-                     ▼
-            Explanation Agent
-                     │
-                     ▼
-                 Response
+### Natural Language Property Search
+
+The system accepts natural language property search requests and converts them into a structured property intent.
+
+The current parser extracts:
+
+- City
+- Budget
+- Bedrooms
+- Bathrooms
+- Property type
+- Preference keywords
+
+Example:
+
+Find single family homes in Irvine under 1.3m with a backyard
+
+↓
+
+PropertyIntent
+
+{
+    city: Irvine
+    max_price: 1300000
+    property_type: Single Family Residence
+    keywords: ["backyard"]
+}
+
+---
+
+### Structured Property Search
+
+The extracted property intent is used to retrieve matching MLS-style listings.
+
+The search pipeline combines:
+
+- Structured filtering
+  - City
+  - Budget
+  - Bedrooms
+  - Bathrooms
+  - Property type
+
+- Keyword matching
+  - Search over listing descriptions (`public_remarks`)
+
+The current prototype uses a small MLS-style sample dataset for local development and workflow validation. The search layer is designed to be replaced by a production database without changing the agent workflow.
+
+---
+
+### Property Recommendation
+
+Matching listings are ranked using a simple recommendation strategy based on:
+
+- Days on market
+- Listing price
+
+Top recommendations are returned to the user.
+
+---
+
+### Explainable Recommendations
+
+For each recommendation, the system generates a natural language explanation describing why the listing satisfies the user's request.
+
+Example:
+
+> Matched because it is in Irvine, under your budget, has at least 3 bedrooms, and the listing remarks mention "backyard".
+
+---
+
+### Interactive Streamlit Demo
+
+![Streamlit Demo](docs/images/week2_demo.jpeg)
+
+A lightweight Streamlit interface demonstrates the complete workflow.
+
+Features include:
+
+- Natural language search
+- Parsed intent visualization
+- Property recommendations
+- Generated explanations
+- Session-based search history
+
+---
+
+## Current Architecture
+
+```
+User Query
+      │
+      ▼
+Intent Agent
+      │
+      ▼
+Property Search
+      │
+      ▼
+Recommendation
+      │
+      ▼
+Explanation
 ```
 
-Each agent is responsible for a single task and communicates through validated data contracts, allowing future components to be replaced without changing the overall workflow.
-
 ---
 
-## Project Structure
-
-```text
-src/
-├── agents/
-├── schemas/
-├── skills/
-├── workflow/
-├── config/
-└── main.py
-
-data/
-docs/
-tests/
-```
-
----
-
-## Tech Stack
+## Technology Stack
 
 - Python 3.10
-- LangGraph
-- LangChain
-- OpenAI SDK
-- Pydantic
+- Streamlit
 - Pandas
+- Pydantic
 
 ---
 
-## Current Status
+## Run the Demo
 
-The current implementation uses a lightweight workflow prototype and MLS-style sample data to validate the end-to-end agent pipeline.
+Install dependencies:
 
-The project prioritizes modular architecture and well-defined data contracts before integrating production LLMs, real MLS databases, and retrieval systems.
+```bash
+pip install -r requirements.txt
+```
+
+Run the Streamlit application:
+
+```bash
+python -m streamlit run src/app/streamlit_app.py
+```
+
+The application will be available locally at:
+
+```
+http://localhost:8501
+```
+
+## Example Queries
+
+Additional sample queries are available in examples/sample_queries.md.
+
+These examples demonstrate the supported natural language search capabilities of the current prototype.
 
 ---
 
-## Roadmap
+## Project Status
 
-### Week 2
-- LLM-based intent understanding
-- Expanded property search capabilities
-- Structured filter generation
+Current progress includes:
 
-### Week 3
-- Database-backed MLS search
-- Parameterized query layer
-- Result formatting
-
-### Week 4+
-- Multi-turn conversational workflow
-- Retrieval-Augmented Generation (RAG)
-- Market analytics
-- Streamlit interface
+- Natural language intent parsing
+- Structured property search
+- Keyword-based listing search
+- Property recommendation
+- Explainable recommendations
+- Interactive Streamlit demo
+- Session search history
 
