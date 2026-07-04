@@ -7,6 +7,8 @@ from src.agents.recommendation_agent import RecommendationAgent
 from src.agents.search_agent import SearchAgent
 from src.search.csv_search_repository import CSVSearchRepository
 
+from datetime import datetime
+
 
 def run_pipeline(query: str) -> dict:
     intent_agent = IntentAgent()
@@ -36,6 +38,31 @@ st.set_page_config(
     layout="wide",
 )
 
+# Initialize search history
+if "search_history" not in st.session_state:
+    st.session_state.search_history = []
+
+# sidebar search history
+with st.sidebar:
+    st.header("🕒 Search History")
+
+    history = st.session_state.search_history
+
+    if not history:
+        st.caption("No searches yet.")
+    else:
+        for item in history:
+            title = f"{item['timestamp']} | {item['query']}"
+
+            with st.expander(title):
+                st.metric("Matching Listings", item["result_count"])
+
+                if item["top_listing"]:
+                    st.write(f"**Top Listing:** {item['top_listing']}")
+
+                st.write("**Parsed Intent**")
+                st.json(item["intent"], expanded=False)
+
 st.title("🏠 Real Estate Agentic Copilot")
 st.caption("Week 2 Demo: Natural language property search over sample MLS-style listings")
 
@@ -50,8 +77,31 @@ if st.button("Search"):
     else:
         result = run_pipeline(query)
 
+        top_listing = None
+        if result["recommendations"]:
+            first_listing = result["recommendations"][0]
+            top_listing = first_listing.listing_id or first_listing.listing_key
+
+        # save search history
+        st.session_state.search_history.insert(
+            0,
+            {
+                "timestamp": datetime.now().strftime("%H:%M:%S"),
+                "query": query,
+                "intent": result["intent"].model_dump(),
+                "result_count": len(result["recommendations"]),
+                "top_listing": top_listing,
+            },
+        )
+
+        # Keep only the most recent 5 searches
+        st.session_state.search_history = (
+            st.session_state.search_history[:5]
+        )
+
         st.subheader("Parsed Intent")
-        st.json(result["intent"].model_dump())
+        with st.expander("Parsed Intent"): 
+            st.json(result["intent"].model_dump()) # show parsed intent only after expansion
 
         st.subheader("Compliance Status")
         st.write(result["compliance_status"])
