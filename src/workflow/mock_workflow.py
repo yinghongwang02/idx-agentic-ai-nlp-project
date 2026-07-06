@@ -5,8 +5,8 @@ from src.agents.recommendation_agent import RecommendationAgent
 from src.agents.explanation_agent import ExplanationAgent
 from src.schemas.state_schema import AgentState
 
-from src.agents.search_agent import SearchAgent
 from src.search.csv_search_repository import CSVSearchRepository
+from src.search.mysql_search_repository import MySQLSearchRepository
 
 
 def run_mock_workflow(user_query: str) -> str:
@@ -16,7 +16,8 @@ def run_mock_workflow(user_query: str) -> str:
 
     intent_agent = IntentAgent()
     # search_agent = SearchAgent()
-    search_repository = CSVSearchRepository("data/sample_listings.csv")
+    # search_repository = CSVSearchRepository("data/sample_listings.csv")
+    search_repository = MySQLSearchRepository()
     search_agent = SearchAgent(repository=search_repository)
 
     compliance_agent = ComplianceAgent()

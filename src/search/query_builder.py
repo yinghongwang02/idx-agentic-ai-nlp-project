@@ -31,6 +31,10 @@ class PropertyQueryBuilder:
         "L_Remarks",
         "L_Photos",
         "PhotoCount",
+        "LMD_MP_Latitude",
+        "LMD_MP_Longitude",
+        "L_Class",
+        "L_Status",
     ]
 
     def __init__(self, table_name: str = "rets_property") -> None:

@@ -6,6 +6,7 @@ from src.agents.intent_agent import IntentAgent
 from src.agents.recommendation_agent import RecommendationAgent
 from src.agents.search_agent import SearchAgent
 from src.search.csv_search_repository import CSVSearchRepository
+from src.search.mysql_search_repository import MySQLSearchRepository
 
 from datetime import datetime
 
@@ -13,7 +14,8 @@ from datetime import datetime
 def run_pipeline(query: str) -> dict:
     intent_agent = IntentAgent()
     compliance_agent = ComplianceAgent()
-    repository = CSVSearchRepository("data/sample_listings.csv")
+    # repository = CSVSearchRepository("data/sample_listings.csv")
+    repository = MySQLSearchRepository()
     search_agent = SearchAgent(repository=repository)
     recommendation_agent = RecommendationAgent()
     explanation_agent = ExplanationAgent()
