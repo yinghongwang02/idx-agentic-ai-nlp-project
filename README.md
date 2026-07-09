@@ -6,7 +6,7 @@ This repository contains my individual project work for the IDX Exchange Summer 
 
 The project explores an Agentic AI workflow for natural language property search. Users can describe property requirements in natural language, and the system converts the request into a structured search intent, retrieves matching MLS-style listings, ranks the results, and generates explanations for each recommendation.
 
-The current prototype uses a small MLS-style sample dataset for local development and workflow validation. The search layer is designed to be replaced by a production database without changing the agent workflow.
+The project now supports both a lightweight CSV dataset for local development and a MySQL-backed MLS search layer using parameterized SQL. The repository architecture allows different search backends to be swapped without changing the agent workflow.
 
 ---
 
@@ -62,6 +62,44 @@ The current prototype uses a small MLS-style sample dataset for local developmen
 
 ---
 
+### MySQL-backed Search Layer
+
+The search module now supports a production-oriented MySQL backend in addition to the original CSV repository. 
+
+The Query Builder generates parameterized SQL, while the formatter converts raw MLS records into typed ListingSchema objects. 
+
+The search pipeline is organized using a Repository Pattern:
+
+PropertyIntent
+        │
+        ▼
+PropertyQueryBuilder
+        │
+        ▼
+SearchRepository
+   ├── CSVSearchRepository
+   └── MySQLSearchRepository
+        │
+        ▼
+PropertyFormatter
+        │
+        ▼
+ListingSchema
+
+
+The MySQL implementation includes:
+
+- Parameterized SQL queries
+- SQL injection protection
+- Query Builder abstraction
+- Repository Pattern
+- Listing formatter for MLS records
+- Pydantic-based typed data models
+
+The same search interface can be reused with different data sources without changing the agent workflow.
+
+---
+
 ### Property Recommendation
 
 Matching listings are ranked using a simple recommendation strategy based on:
@@ -108,7 +146,18 @@ User Query
 Intent Agent
       │
       ▼
-Property Search
+PropertyIntent
+      │
+      ▼
+PropertyQueryBuilder
+      │
+      ▼
+SearchRepository
+ ├── CSV
+ └── MySQL
+      │
+      ▼
+PropertyFormatter
       │
       ▼
 Recommendation
@@ -123,8 +172,11 @@ Explanation
 
 - Python 3.10
 - Streamlit
+- MySQL
+- mysql-connector-python
 - Pandas
 - Pydantic
+- Pytest
 
 ---
 
@@ -148,6 +200,34 @@ The application will be available locally at:
 http://localhost:8501
 ```
 
+---
+
+## Unit Tests
+
+The project includes unit tests covering the core search pipeline.
+
+Current test coverage includes:
+
+- Intent parsing
+- SQL query generation
+- CSV search repository
+- MySQL search repository
+- Listing formatter
+
+Run all tests:
+
+```bash
+pytest
+```
+
+or
+
+```bash
+python -m pytest
+```
+
+---
+
 ## Example Queries
 
 Additional sample queries are available in examples/sample_queries.md.
@@ -162,9 +242,12 @@ Current progress includes:
 
 - Natural language intent parsing
 - Structured property search
+- MySQL-backed property search
+- Repository Pattern
+- Parameterized SQL query generation
 - Keyword-based listing search
 - Property recommendation
 - Explainable recommendations
 - Interactive Streamlit demo
 - Session search history
-
+- Unit tests with pytest
