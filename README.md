@@ -6,7 +6,7 @@ This repository contains my individual project work for the IDX Exchange Summer 
 
 The project explores an Agentic AI workflow for natural language property search. Users can describe property requirements in natural language, and the system converts the request into a structured search intent, retrieves matching MLS-style listings, ranks the results, and generates explanations for each recommendation.
 
-The project now supports both a lightweight CSV dataset for local development and a MySQL-backed MLS search layer using parameterized SQL. The repository architecture allows different search backends to be swapped without changing the agent workflow.
+The project now supports both a lightweight CSV dataset for local development and a MySQL-backed MLS search layer using parameterized SQL. The repository architecture allows different search backends to be swapped without changing the agent workflow. This modular design makes it straightforward to extend the project to additional data sources or production MLS services in the future. 
 
 ---
 
@@ -27,6 +27,7 @@ The current parser extracts:
 
 Example:
 
+```text
 Find single family homes in Irvine under 1.3m with a backyard
 
 ↓
@@ -39,6 +40,7 @@ PropertyIntent
     property_type: Single Family Residence
     keywords: ["backyard"]
 }
+```
 
 ---
 
@@ -58,7 +60,7 @@ The search pipeline combines:
 - Keyword matching
   - Search over listing descriptions (`public_remarks`)
 
-The current prototype uses a small MLS-style sample dataset for local development and workflow validation. The search layer is designed to be replaced by a production database without changing the agent workflow.
+The current project supports both a lightweight CSV dataset for local development and a MySQL-backed MLS database for production-oriented property search. The search layer is designed to be replaced by a production database without changing the agent workflow.
 
 ---
 
@@ -70,6 +72,7 @@ The Query Builder generates parameterized SQL, while the formatter converts raw 
 
 The search pipeline is organized using a Repository Pattern:
 
+```
 PropertyIntent
         │
         ▼
@@ -85,9 +88,10 @@ PropertyFormatter
         │
         ▼
 ListingSchema
+```
 
 
-The MySQL implementation includes:
+Key design features include:
 
 - Parameterized SQL queries
 - SQL injection protection
@@ -171,9 +175,9 @@ Explanation
 ## Technology Stack
 
 - Python 3.10
-- Streamlit
 - MySQL
 - mysql-connector-python
+- Streamlit
 - Pandas
 - Pydantic
 - Pytest
@@ -208,7 +212,7 @@ The project includes unit tests covering the core search pipeline.
 
 Current test coverage includes:
 
-- Intent parsing
+- Intent Agent
 - SQL query generation
 - CSV search repository
 - MySQL search repository
@@ -241,13 +245,12 @@ These examples demonstrate the supported natural language search capabilities of
 Current progress includes:
 
 - Natural language intent parsing
-- Structured property search
 - MySQL-backed property search
 - Repository Pattern
 - Parameterized SQL query generation
-- Keyword-based listing search
+- Keyword-based property search
 - Property recommendation
 - Explainable recommendations
 - Interactive Streamlit demo
 - Session search history
-- Unit tests with pytest
+- Unit testing with pytest

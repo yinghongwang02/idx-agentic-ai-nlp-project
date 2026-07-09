@@ -12,16 +12,36 @@ class IntentAgent:
         "San Diego",
         "Santa Monica",
     ]
+
     PROPERTY_TYPE_MAP = {
-        "condo": "Condo",
-        "condos": "Condo",
-        "condominium": "Condo",
+        # Condo
+        "condo": "Condominium",
+        "condos": "Condominium",
+        "condominium": "Condominium",
+
+        # Townhouse
         "townhouse": "Townhouse",
+        "townhouses": "Townhouse",
         "townhome": "Townhouse",
-        "single family": "Single Family Residence",
-        "single-family": "Single Family Residence",
-        "single family home": "Single Family Residence",
-        "house": "Single Family Residence",
+        "townhomes": "Townhouse",
+
+        # Single Family
+        "single family": "SingleFamilyResidence",
+        "single-family": "SingleFamilyResidence",
+        "single family home": "SingleFamilyResidence",
+        "single family homes": "SingleFamilyResidence",
+        "house": "SingleFamilyResidence",
+        "houses": "SingleFamilyResidence",
+        "home": "SingleFamilyResidence",
+        "homes": "SingleFamilyResidence",
+
+        # Manufactured
+        "manufactured": "ManufacturedOnLand",
+        "manufactured home": "ManufacturedOnLand",
+        "mobile home": "ManufacturedOnLand",
+
+        # Duplex
+        "duplex": "Duplex",
     }
 
     KEYWORD_CANDIDATES = [
