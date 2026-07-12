@@ -1,9 +1,19 @@
 import re
 
+from src.memory.session_memory import SessionMemory
 from src.schemas.intent_schema import PropertyIntent
 
 
 class IntentAgent:
+    def __init__(self, memory: SessionMemory | None = None) -> None:
+        """
+        Create an intent parser with optional session memory.
+
+        When memory is provided, incomplete follow-up queries inherit
+        previously remembered property-search preferences.
+        """
+        self.memory = memory
+        
     CITY_CANDIDATES = [
         "Irvine",
         "Newport Beach",
@@ -85,7 +95,33 @@ class IntentAgent:
         "single story",
     ]
 
+
     def run(self, query: str) -> PropertyIntent:
+        """
+        Parse the current user query and optionally merge it with
+        preferences remembered from previous turns.
+        """
+        current_intent = self._parse_current_query(query)
+
+        if self.memory is None:
+            return current_intent
+
+        current_values = current_intent.model_dump()
+        merged_values = self.memory.merge(current_values)
+
+        merged_intent = PropertyIntent(**merged_values)
+
+        # Store only values explicitly parsed from the current turn.
+        # SessionMemory ignores None and empty collections.
+        self.memory.update(current_values)
+
+        return merged_intent
+    
+    def _parse_current_query(self, query: str) -> PropertyIntent:
+        """
+        Parse only the preferences explicitly mentioned in the current
+        query without using session memory.
+        """
         query_lower = query.lower()
 
         return PropertyIntent(
