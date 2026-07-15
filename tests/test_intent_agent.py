@@ -11,7 +11,7 @@ def test_intent_agent_parses_basic_property_query():
     assert intent.city == "Irvine"
     assert intent.max_price == 900000
     assert intent.min_bedrooms == 3
-    assert intent.property_type == "Condo"
+    assert intent.property_type == "Condominium"
     assert "pool" in intent.keywords
 
 
@@ -24,7 +24,7 @@ def test_intent_agent_parses_million_price_suffix():
 
     assert intent.city == "Pasadena"
     assert intent.max_price == 1200000
-    assert intent.property_type == "Single Family Residence"
+    assert intent.property_type == "SingleFamilyResidence"
 
 
 def test_intent_agent_extracts_multiple_keywords():
