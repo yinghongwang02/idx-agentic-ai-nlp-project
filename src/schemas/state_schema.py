@@ -6,23 +6,27 @@ from src.schemas.listing_schema import ListingSchema
 
 
 class AgentState(TypedDict, total=False):
+    # Current user input
     user_query: str
+
+    # Parsed and memory-enriched intent
     intent: PropertyIntent
-    listings: list[ListingSchema]
-    compliance_status: str
-    recommendations: list[ListingSchema]
-    final_answer: str
 
-    # Compliance result for the incoming query
-    query_compliance: ComplianceReport
-    # Snapshot of current session preferences
+    # Session memory snapshot
     memory_snapshot: dict[str, Any]
-    # Compliance result for generated output
-    output_compliance: ComplianceReport
-    # Workflow control and diagnostics
-    blocked: bool
-    error: str | None
 
+    # Compliance
+    query_compliance: ComplianceReport
+    output_compliance: ComplianceReport
+
+    # Search pipeline
     search_results: list[ListingSchema]
+    recommendations: list[ListingSchema]
+
+    # Generated text
     explanation: str
     final_response: str
+
+    # Workflow control
+    blocked: bool
+    error: str | None
