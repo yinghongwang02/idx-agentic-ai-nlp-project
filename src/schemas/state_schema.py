@@ -23,3 +23,6 @@ class AgentState(TypedDict, total=False):
     blocked: bool
     error: str | None
 
+    search_results: list[ListingSchema]
+    explanation: str
+    final_response: str
