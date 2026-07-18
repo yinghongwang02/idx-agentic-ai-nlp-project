@@ -10,10 +10,11 @@ The local MySQL database `idx_exchange` currently contains three MLS tables.
 
 The project currently uses `rets_property` as the primary search source.
 
-Future modules will additionally use:
+The project currently uses:
 
-- california_sold → market analytics, comparable sales, recommendation validation
-- rets_openhouse → open house search and recommendations
+- `rets_property` → active property search
+- `california_sold` → sold comparable retrieval and market analytics
+- `rets_openhouse` → reserved for future open house search and recommendations
 
 ---
 
@@ -66,6 +67,33 @@ Search agents, query builders, and future RAG components should treat the API fi
 | L_SystemPrice | ListPrice | Current listing price |
 | AssociationFee | AssociationFee | HOA fee |
 | AssociationFeeFrequency | AssociationFeeFrequency | HOA frequency |
+
+---
+
+## Sold Comparable Fields
+
+The `california_sold` table uses standardized MLS/RESO-style field names and supports Week 5 market analytics and comparable sales analysis.
+
+| Sold Field | Canonical Concept | Description |
+|------------|-------------------|-------------|
+| ListingKey | listing_key | Sold listing identifier |
+| UnparsedAddress | unparsed_address | Full property address |
+| City | city | City |
+| PostalCode | postal_code | ZIP code |
+| PropertySubType | property_sub_type | Property subtype |
+| BedroomsTotal | bedrooms_total | Number of bedrooms |
+| BathroomsTotalInteger | bathrooms_total_integer | Number of bathrooms |
+| LivingArea | living_area | Living area in square feet |
+| OriginalListPrice | original_list_price | Original listing price |
+| ListPrice | list_price | Final listing price before sale |
+| ClosePrice | close_price | Final sale price |
+| CloseDate | close_date | Sale closing date |
+| DaysOnMarket | days_on_market | Number of days on market |
+| AssociationFee | association_fee | HOA fee |
+
+These fields are normalized into `SoldCompSchema` before being used by the market analytics and negotiation modules.
+
+The initial sold comparable repository supports recent comparable retrieval by city, with optional ZIP code filtering and a configurable lookback window.
 
 ---
 
