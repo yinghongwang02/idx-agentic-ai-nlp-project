@@ -1,14 +1,12 @@
 from abc import ABC, abstractmethod
 
+from src.schemas.comparable_result_schema import ComparableResult
 from src.schemas.sold_comp_schema import SoldCompSchema
-
+from src.schemas.listing_schema import ListingSchema
 
 class SoldCompRepository(ABC):
     """
     Abstract repository interface for sold comparable properties.
-
-    Implementations are responsible for retrieving normalized sold comp
-    records without exposing database-specific logic to MarketAgent.
     """
 
     @abstractmethod
@@ -37,5 +35,38 @@ class SoldCompRepository(ABC):
 
         Returns:
             A list of normalized SoldCompSchema objects.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def find_similar_comps(
+        self,
+        listing: ListingSchema,
+        months: int = 12,
+        limit: int = 100,
+        minimum_comps: int = 5,
+    ) -> ComparableResult:
+        """
+        Find comparable sold properties using progressive fallback.
+
+        Match levels:
+
+        strict:
+            city + ZIP + property type
+            + beds +/- 1
+            + baths +/- 1
+            + sqft +/- 20%
+
+        relaxed:
+            city + property type
+            + beds +/- 1
+            + baths +/- 1
+            + sqft +/- 25%
+
+        broad:
+            city + property type
+
+        market_fallback:
+            city-level recent sold properties
         """
         raise NotImplementedError
