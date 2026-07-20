@@ -12,4 +12,8 @@ class PropertyIntent(BaseModel):
 
     property_type: str | None = None
 
+    # Hard keyword requirements used by SearchAgent.
     keywords: list[str] = Field(default_factory=list)
+
+    # Soft preferences used for recommendation scoring.
+    preferences: list[str] = Field(default_factory=list)

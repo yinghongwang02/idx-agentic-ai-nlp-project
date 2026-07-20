@@ -13,7 +13,7 @@ class IntentAgent:
         previously remembered property-search preferences.
         """
         self.memory = memory
-        
+
     CITY_CANDIDATES = [
         "Irvine",
         "Newport Beach",
@@ -123,6 +123,7 @@ class IntentAgent:
         query without using session memory.
         """
         query_lower = query.lower()
+        preferences = self._parse_preferences(query_lower)
 
         return PropertyIntent(
             city=self._parse_city(query_lower),
@@ -130,7 +131,11 @@ class IntentAgent:
             min_bedrooms=self._parse_min_bedrooms(query_lower),
             min_bathrooms=self._parse_min_bathrooms(query_lower),
             property_type=self._parse_property_type(query_lower),
-            keywords=self._parse_keywords(query_lower),
+            keywords=self._parse_keywords(
+                query_lower=query_lower,
+                preferences=preferences,
+            ),
+            preferences=preferences,
         )
 
     def _parse_city(self, query_lower: str) -> str | None:
@@ -182,9 +187,64 @@ class IntentAgent:
                 return normalized_type
         return None
 
-    def _parse_keywords(self, query_lower: str) -> list[str]:
+    def _parse_preferences(
+        self,
+        query_lower: str,
+    ) -> list[str]:
+        """
+        Parse amenities explicitly expressed as soft preferences.
+
+        Examples:
+            "preferably with a pool"
+            "prefer a garage"
+            "would like a view"
+            "nice to have a backyard"
+            "ideally with a pool"
+        """
+
+        preference_patterns = [
+            r"preferably(?:\s+with)?\s+(?:a|an)?\s*{keyword}",
+            r"prefer(?:\s+with)?\s+(?:a|an)?\s*{keyword}",
+            r"would like(?:\s+to have)?\s+(?:a|an)?\s*{keyword}",
+            r"nice to have\s+(?:a|an)?\s*{keyword}",
+            r"ideally(?:\s+with)?\s+(?:a|an)?\s*{keyword}",
+        ]
+
+        preferences: list[str] = []
+
+        for keyword in self.KEYWORD_CANDIDATES:
+            escaped_keyword = re.escape(keyword)
+
+            for pattern in preference_patterns:
+                regex = pattern.format(
+                    keyword=escaped_keyword,
+                )
+
+                if re.search(regex, query_lower):
+                    preferences.append(keyword)
+                    break
+
+        return preferences
+    
+    def _parse_keywords(
+        self,
+        query_lower: str,
+        preferences: list[str] | None = None,
+    ) -> list[str]:
+        """
+        Parse hard keyword requirements.
+
+        Keywords explicitly identified as soft preferences are excluded
+        so they do not become SQL search filters.
+        """
+
+        preference_set = set(
+            preferences or []
+        )
+
         return [
             keyword
             for keyword in self.KEYWORD_CANDIDATES
             if keyword in query_lower
+            and keyword not in preference_set
         ]

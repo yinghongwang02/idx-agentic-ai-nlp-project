@@ -28,6 +28,7 @@ class SessionMemory(BaseMemory):
         "max_sqft",
         "property_type",
         "keywords",
+        "preferences",
         "limit",
     }
 
@@ -48,11 +49,11 @@ class SessionMemory(BaseMemory):
             if not self._is_meaningful(value):
                 continue
 
-            if key == "keywords" and isinstance(value, list):
-                existing_keywords = self._data.get("keywords", [])
+            if key in {"keywords", "preferences"} and isinstance(value, list):
+                existing_values = self._data.get(key, [])
 
-                self._data["keywords"] = list(
-                    dict.fromkeys([*existing_keywords, *value])
+                self._data[key] = list(
+                    dict.fromkeys([*existing_values, *value])
                 )
             else:
                 self._data[key] = deepcopy(value)
@@ -78,11 +79,11 @@ class SessionMemory(BaseMemory):
             if not self._is_meaningful(value):
                 continue
 
-            if key == "keywords" and isinstance(value, list):
-                existing_keywords = merged.get("keywords", [])
+            if key in {"keywords", "preferences"} and isinstance(value, list):
+                existing_values = merged.get(key, [])
 
-                merged["keywords"] = list(
-                    dict.fromkeys([*existing_keywords, *value])
+                merged[key] = list(
+                    dict.fromkeys([*existing_values, *value])
                 )
             else:
                 merged[key] = deepcopy(value)
