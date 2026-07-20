@@ -1,5 +1,5 @@
 from src.schemas.listing_schema import ListingSchema
-from src.schemas.market_summary_schema import MarketSummary
+from src.schemas.market_context_schema import MarketContext
 from src.schemas.negotiation_analysis_schema import NegotiationAnalysis
 
 
@@ -7,222 +7,209 @@ class NegotiationAgent:
     """
     Estimate negotiation opportunity for an active listing.
 
-    The score is based on:
-        - listing days on market
-        - listing price relative to market median
-        - recent market sale-to-list ratio
-        - HOA burden
+    The analysis focuses on:
+        1. Relative days on market
+        2. Recent sale-to-list behavior
 
-    Higher scores indicate stronger potential negotiation leverage.
+    Listing-specific comparable data is preferred.
+    Broader city market data is used as a fallback.
+
+    Higher scores indicate stronger evidence of potential
+    negotiation leverage.
     """
 
     def run(
         self,
         listing: ListingSchema,
-        market_summary: MarketSummary,
+        market_context: MarketContext,
     ) -> NegotiationAnalysis:
         signals: list[str] = []
 
+        comparable_market = (
+            market_context.comparable_market
+        )
+
+        city_market = (
+            market_context.city_market
+        )
+
+        use_comparable_market = (
+            comparable_market.match_level
+            != "market_fallback"
+            and comparable_market.comp_count > 0
+        )
+
+        if use_comparable_market:
+            reference_dom = (
+                comparable_market
+                .average_days_on_market
+            )
+
+            reference_sale_to_list = (
+                comparable_market
+                .average_sale_to_list_ratio
+            )
+
+            signals.append(
+                f"Negotiation analysis uses "
+                f"{comparable_market.comp_count} "
+                f"{comparable_market.match_level} "
+                f"comparable sales."
+            )
+
+        else:
+            reference_dom = (
+                city_market.average_days_on_market
+            )
+
+            reference_sale_to_list = (
+                city_market
+                .average_sale_to_list_ratio
+            )
+
+            signals.append(
+                "Listing-specific comparable data was limited, "
+                "so broader city market data is used."
+            )
+
         dom_score = self._calculate_dom_score(
             listing=listing,
-            market_summary=market_summary,
+            reference_dom=reference_dom,
             signals=signals,
         )
 
-        price_position_score = self._calculate_price_position_score(
-            listing=listing,
-            market_summary=market_summary,
-            signals=signals,
-        )
-
-        sale_to_list_score = self._calculate_sale_to_list_score(
-            market_summary=market_summary,
-            signals=signals,
-        )
-
-        hoa_score = self._calculate_hoa_score(
-            listing=listing,
-            signals=signals,
+        sale_to_list_score = (
+            self._calculate_sale_to_list_score(
+                reference_ratio=reference_sale_to_list,
+                signals=signals,
+            )
         )
 
         negotiation_score = (
-            dom_score * 0.40
-            + price_position_score * 0.30
-            + sale_to_list_score * 0.20
-            + hoa_score * 0.10
+            dom_score * 0.65
+            + sale_to_list_score * 0.35
         )
 
         return NegotiationAnalysis(
-            negotiation_score=round(negotiation_score, 2),
-            dom_score=round(dom_score, 2),
-            price_position_score=round(price_position_score, 2),
-            sale_to_list_score=round(sale_to_list_score, 2),
-            hoa_score=round(hoa_score, 2),
+            negotiation_score=round(
+                negotiation_score,
+                2,
+            ),
+            dom_score=round(
+                dom_score,
+                2,
+            ),
+            sale_to_list_score=round(
+                sale_to_list_score,
+                2,
+            ),
             signals=signals,
         )
 
     @staticmethod
     def _calculate_dom_score(
         listing: ListingSchema,
-        market_summary: MarketSummary,
+        reference_dom: float | None,
         signals: list[str],
     ) -> float:
         listing_dom = listing.days_on_market
-        market_dom = market_summary.average_days_on_market
 
         if (
             listing_dom is None
-            or market_dom is None
-            or market_dom <= 0
+            or reference_dom is None
+            or reference_dom <= 0
         ):
+            signals.append(
+                "Days-on-market data was insufficient "
+                "for a strong negotiation signal."
+            )
             return 50.0
 
-        ratio = listing_dom / market_dom
+        ratio = listing_dom / reference_dom
 
         if ratio >= 2.0:
             signals.append(
-                "The listing has been on the market much longer than "
-                "the recent market average."
+                "The listing has been on the market much longer "
+                "than comparable properties."
             )
             return 100.0
 
         if ratio >= 1.5:
             signals.append(
-                "The listing has been on the market significantly longer "
-                "than the recent market average."
+                "The listing has been on the market significantly "
+                "longer than comparable properties."
             )
             return 85.0
 
         if ratio >= 1.2:
             signals.append(
-                "The listing has been on the market longer than the "
-                "recent market average."
+                "The listing has been on the market longer "
+                "than comparable properties."
             )
             return 70.0
 
         if ratio >= 0.8:
             signals.append(
-                "The listing's market time is close to the recent average."
+                "The listing's market time is close "
+                "to comparable properties."
             )
             return 50.0
+
+        if ratio >= 0.4:
+            signals.append(
+                "The listing has been on the market for less time "
+                "than comparable properties."
+            )
+            return 35.0
 
         signals.append(
-            "The listing is relatively new compared with the recent "
-            "market average."
-        )
-        return 25.0
-
-    @staticmethod
-    def _calculate_price_position_score(
-        listing: ListingSchema,
-        market_summary: MarketSummary,
-        signals: list[str],
-    ) -> float:
-        list_price = listing.list_price
-        median_close_price = market_summary.median_close_price
-
-        if (
-            list_price is None
-            or median_close_price is None
-            or median_close_price <= 0
-        ):
-            return 50.0
-
-        ratio = list_price / median_close_price
-
-        if ratio >= 1.30:
-            signals.append(
-                "The listing price is well above the recent market median."
-            )
-            return 90.0
-
-        if ratio >= 1.15:
-            signals.append(
-                "The listing price is above the recent market median."
-            )
-            return 75.0
-
-        if ratio >= 0.90:
-            signals.append(
-                "The listing price is relatively close to the recent "
-                "market median."
-            )
-            return 50.0
-
-        signals.append(
-            "The listing price is below the recent market median."
-        )
-        return 30.0
-
-    @staticmethod
-    def _calculate_sale_to_list_score(
-        market_summary: MarketSummary,
-        signals: list[str],
-    ) -> float:
-        ratio = market_summary.average_sale_to_list_ratio
-
-        if ratio is None:
-            return 50.0
-
-        if ratio < 0.95:
-            signals.append(
-                "Recent homes have generally sold noticeably below "
-                "their final asking prices."
-            )
-            return 100.0
-
-        if ratio < 0.98:
-            signals.append(
-                "Recent homes have generally sold below their final "
-                "asking prices."
-            )
-            return 80.0
-
-        if ratio < 1.00:
-            signals.append(
-                "Recent homes have sold slightly below asking price "
-                "on average."
-            )
-            return 60.0
-
-        if ratio <= 1.02:
-            signals.append(
-                "Recent homes have sold close to asking price on average."
-            )
-            return 40.0
-
-        signals.append(
-            "Recent homes have generally sold above asking price."
+            "The listing is relatively new compared "
+            "with similar recent sales."
         )
         return 20.0
 
     @staticmethod
-    def _calculate_hoa_score(
-        listing: ListingSchema,
+    def _calculate_sale_to_list_score(
+        reference_ratio: float | None,
         signals: list[str],
     ) -> float:
-        hoa = listing.association_fee
-
-        if hoa is None or hoa <= 0:
+        if reference_ratio is None:
+            signals.append(
+                "Sale-to-list data was insufficient "
+                "for a strong negotiation signal."
+            )
             return 50.0
 
-        if hoa >= 1000:
+        if reference_ratio < 0.95:
             signals.append(
-                "The property has a high HOA fee, which may reduce "
-                "buyer demand."
+                "Comparable properties have generally sold "
+                "noticeably below asking price."
             )
-            return 85.0
+            return 100.0
 
-        if hoa >= 500:
+        if reference_ratio < 0.98:
             signals.append(
-                "The property has a relatively high HOA fee."
+                "Comparable properties have generally sold "
+                "below asking price."
             )
-            return 70.0
+            return 80.0
 
-        if hoa >= 250:
+        if reference_ratio < 1.00:
             signals.append(
-                "The property has a moderate HOA fee."
+                "Comparable properties have sold slightly below "
+                "asking price on average."
             )
-            return 55.0
+            return 60.0
 
-        return 40.0
+        if reference_ratio <= 1.02:
+            signals.append(
+                "Comparable properties have sold close "
+                "to asking price on average."
+            )
+            return 40.0
+
+        signals.append(
+            "Comparable properties have generally sold "
+            "above asking price."
+        )
+        return 20.0

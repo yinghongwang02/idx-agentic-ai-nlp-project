@@ -30,59 +30,63 @@ def main() -> None:
         print("No active listings found.")
         return
 
-    market_summary = market_agent.run(
-        city="Irvine",
-        months=12,
-        limit=500,
-    )
 
-    print("=" * 80)
-    print("NEGOTIATION AGENT TEST")
-    print("=" * 80)
-
-    print(
-        f"Market Average DOM: "
-        f"{market_summary.average_days_on_market:.2f}"
-    )
-    print(
-        f"Market Sale-to-List Ratio: "
-        f"{market_summary.average_sale_to_list_ratio:.4f}"
-    )
-    print(
-        f"Market Median Close Price: "
-        f"${market_summary.median_close_price:,.2f}"
-    )
-
-    for index, listing in enumerate(listings, start=1):
-        analysis = negotiation_agent.run(
-            listing=listing,
-            market_summary=market_summary,
+    for index, listing in enumerate(
+        listings,
+        start=1,
+    ):
+        market_context = (
+            market_agent.analyze_listing(
+                listing=listing,
+                months=12,
+                market_limit=500,
+                comparable_limit=100,
+                minimum_comps=5,
+            )
         )
 
-        print("\n" + "-" * 80)
-        print(f"Listing #{index}")
-        print("-" * 80)
+        analysis = negotiation_agent.run(
+            listing=listing,
+            market_context=market_context,
+        )
 
-        print(f"Address: {listing.unparsed_address}")
-        print(f"Price: ${listing.list_price:,.2f}")
-        print(f"Days on Market: {listing.days_on_market}")
-        print(f"HOA: {listing.association_fee}")
+        comparable_market = (
+            market_context.comparable_market
+        )
+
+        print("\n" + "-" * 100)
+        print(f"Listing #{index}")
+        print("-" * 100)
+
+        print(
+            f"Address: "
+            f"{listing.unparsed_address}"
+        )
+
+        print(
+            f"Match Level: "
+            f"{comparable_market.match_level}"
+        )
+
+        print(
+            f"Comparable Count: "
+            f"{comparable_market.comp_count}"
+        )
 
         print(
             f"Negotiation Score: "
             f"{analysis.negotiation_score:.2f}"
         )
 
-        print(f"DOM Score: {analysis.dom_score:.2f}")
         print(
-            f"Price Position Score: "
-            f"{analysis.price_position_score:.2f}"
+            f"DOM Score: "
+            f"{analysis.dom_score:.2f}"
         )
+
         print(
             f"Sale-to-List Score: "
             f"{analysis.sale_to_list_score:.2f}"
         )
-        print(f"HOA Score: {analysis.hoa_score:.2f}")
 
         print("Signals:")
 
