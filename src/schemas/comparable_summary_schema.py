@@ -13,3 +13,5 @@ class ComparableSummary(BaseModel):
     average_days_on_market: float | None = None
     average_sale_to_list_ratio: float | None = None
     median_price_per_sqft: float | None = None
+
+    valid_ppsf_count: int = 0

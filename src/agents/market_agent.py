@@ -194,6 +194,7 @@ class MarketAgent:
             and comp.living_area > 0
         ]
 
+
         return ComparableSummary(
             match_level=match_level,
             comp_count=len(comps),
@@ -216,5 +217,8 @@ class MarketAgent:
                 median(price_per_sqft_values)
                 if price_per_sqft_values
                 else None
+            ),
+            valid_ppsf_count=len(
+                price_per_sqft_values
             ),
         )
