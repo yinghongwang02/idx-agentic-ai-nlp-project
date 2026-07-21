@@ -1,9 +1,11 @@
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from src.memory.session_memory import SessionMemory
 from src.schemas.intent_schema import PropertyIntent
+from src.schemas.listing_schema import ListingSchema
 from src.workflow.graph import PropertySearchGraph
 
 
@@ -11,33 +13,136 @@ class FakeSearchAgent:
     def __init__(self) -> None:
         self.call_count = 0
         self.received_intents: list[PropertyIntent] = []
+        self.received_limits: list[int] = []
 
     def run(
         self,
         intent: PropertyIntent,
-    ) -> list[dict[str, Any]]:
+        limit: int = 5,
+    ) -> list[ListingSchema]:
         self.call_count += 1
         self.received_intents.append(intent)
+        self.received_limits.append(limit)
 
         return [
-            {
-                "listing_key": "TEST-001",
-                "city": intent.city,
-                "list_price": 900_000,
-            }
+            ListingSchema(
+                listing_key="TEST-001",
+                unparsed_address="123 Test Street",
+                city=intent.city,
+                list_price=900_000,
+            )
         ]
 
 
-class FakeRecommendationAgent:
+class FakeMarketAgent:
+    def __init__(self) -> None:
+        self.call_count = 0
+
+    def analyze_listing(
+        self,
+        listing: ListingSchema,
+        months: int = 12,
+        market_limit: int = 500,
+        comparable_limit: int = 100,
+        minimum_comps: int = 5,
+    ) -> SimpleNamespace:
+        self.call_count += 1
+
+        return SimpleNamespace(
+            city_market=SimpleNamespace(),
+            comparable_market=SimpleNamespace(),
+        )
+
+
+class FakePreferenceMatchAgent:
     def __init__(self) -> None:
         self.call_count = 0
 
     def run(
         self,
-        listings: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
+        listing: ListingSchema,
+        intent: PropertyIntent,
+    ) -> SimpleNamespace:
         self.call_count += 1
-        return listings
+
+        return SimpleNamespace(
+            preference_match_score=50.0,
+            signals=[],
+        )
+
+
+class FakeComparableValueAgent:
+    def __init__(self) -> None:
+        self.call_count = 0
+
+    def run(
+        self,
+        listing: ListingSchema,
+        market_context: SimpleNamespace,
+    ) -> SimpleNamespace:
+        self.call_count += 1
+
+        return SimpleNamespace(
+            adjusted_value_score=50.0,
+            signals=[],
+        )
+
+
+class FakeNegotiationAgent:
+    def __init__(self) -> None:
+        self.call_count = 0
+
+    def run(
+        self,
+        listing: ListingSchema,
+        market_context: SimpleNamespace,
+    ) -> SimpleNamespace:
+        self.call_count += 1
+
+        return SimpleNamespace(
+            negotiation_score=50.0,
+            signals=[],
+        )
+
+
+class FakeRecommendationAgent:
+    def __init__(self) -> None:
+        self.call_count = 0
+        self.rank_call_count = 0
+
+    def score_listing(
+        self,
+        listing: ListingSchema,
+        preference_analysis: SimpleNamespace,
+        comparable_value_analysis: SimpleNamespace,
+        negotiation_analysis: SimpleNamespace,
+    ) -> SimpleNamespace:
+        self.call_count += 1
+
+        return SimpleNamespace(
+            listing=listing,
+            overall_score=50.0,
+            preference_match_score=(
+                preference_analysis.preference_match_score
+            ),
+            comparable_value_score=(
+                comparable_value_analysis.adjusted_value_score
+            ),
+            negotiation_score=(
+                negotiation_analysis.negotiation_score
+            ),
+            recommendation_label="Moderate Match",
+            reasons=[],
+        )
+
+    def rank(
+        self,
+        recommendations: list[SimpleNamespace],
+        limit: int = 5,
+    ) -> list[SimpleNamespace]:
+        self.rank_call_count += 1
+
+        return recommendations[:limit]
 
 
 class FakeExplanationAgent:
@@ -51,7 +156,7 @@ class FakeExplanationAgent:
     def run(
         self,
         intent: PropertyIntent,
-        listings: list[dict[str, Any]],
+        listings: list[ListingSchema],
     ) -> str:
         self.call_count += 1
 
@@ -70,13 +175,22 @@ class FakeExplanationAgent:
 @pytest.fixture
 def graph_components() -> dict[str, Any]:
     memory = SessionMemory()
+
     search_agent = FakeSearchAgent()
+    market_agent = FakeMarketAgent()
+    preference_match_agent = FakePreferenceMatchAgent()
+    comparable_value_agent = FakeComparableValueAgent()
+    negotiation_agent = FakeNegotiationAgent()
     recommendation_agent = FakeRecommendationAgent()
     explanation_agent = FakeExplanationAgent()
 
     graph = PropertySearchGraph(
         search_agent=search_agent,
         memory=memory,
+        market_agent=market_agent,
+        preference_match_agent=preference_match_agent,
+        comparable_value_agent=comparable_value_agent,
+        negotiation_agent=negotiation_agent,
         recommendation_agent=recommendation_agent,
         explanation_agent=explanation_agent,
     )
@@ -85,6 +199,10 @@ def graph_components() -> dict[str, Any]:
         "graph": graph,
         "memory": memory,
         "search_agent": search_agent,
+        "market_agent": market_agent,
+        "preference_match_agent": preference_match_agent,
+        "comparable_value_agent": comparable_value_agent,
+        "negotiation_agent": negotiation_agent,
         "recommendation_agent": recommendation_agent,
         "explanation_agent": explanation_agent,
     }
@@ -126,7 +244,12 @@ def test_green_query_completes_full_langgraph(
     )
 
     assert search_agent.call_count == 1
+    assert search_agent.received_limits == [
+        graph.SEARCH_CANDIDATE_LIMIT
+    ]
+
     assert recommendation_agent.call_count == 1
+    assert recommendation_agent.rank_call_count == 1
     assert explanation_agent.call_count == 1
 
 
@@ -188,6 +311,7 @@ def test_red_query_routes_directly_to_end(
 
     assert search_agent.call_count == 0
     assert recommendation_agent.call_count == 0
+    assert recommendation_agent.rank_call_count == 0
     assert explanation_agent.call_count == 0
 
 
@@ -258,7 +382,17 @@ def test_yellow_generated_output_is_replaced_in_langgraph(
 ) -> None:
     memory = graph_components["memory"]
     search_agent = graph_components["search_agent"]
-    recommendation_agent = graph_components["recommendation_agent"]
+    market_agent = graph_components["market_agent"]
+    preference_match_agent = graph_components[
+        "preference_match_agent"
+    ]
+    comparable_value_agent = graph_components[
+        "comparable_value_agent"
+    ]
+    negotiation_agent = graph_components["negotiation_agent"]
+    recommendation_agent = graph_components[
+        "recommendation_agent"
+    ]
 
     explanation_agent = FakeExplanationAgent(
         output_text=(
@@ -270,6 +404,10 @@ def test_yellow_generated_output_is_replaced_in_langgraph(
     graph = PropertySearchGraph(
         search_agent=search_agent,
         memory=memory,
+        market_agent=market_agent,
+        preference_match_agent=preference_match_agent,
+        comparable_value_agent=comparable_value_agent,
+        negotiation_agent=negotiation_agent,
         recommendation_agent=recommendation_agent,
         explanation_agent=explanation_agent,
     )
@@ -296,14 +434,29 @@ def test_langgraph_captures_agent_exception() -> None:
         def run(
             self,
             intent: PropertyIntent,
-        ) -> list[dict[str, Any]]:
-            raise RuntimeError("Search failed")
+            limit: int = 5,
+        ) -> list[ListingSchema]:
+            raise RuntimeError(
+                "Search failed"
+            )
 
     graph = PropertySearchGraph(
         search_agent=FailingSearchAgent(),
         memory=SessionMemory(),
-        recommendation_agent=FakeRecommendationAgent(),
-        explanation_agent=FakeExplanationAgent(),
+        market_agent=FakeMarketAgent(),
+        preference_match_agent=(
+            FakePreferenceMatchAgent()
+        ),
+        comparable_value_agent=(
+            FakeComparableValueAgent()
+        ),
+        negotiation_agent=FakeNegotiationAgent(),
+        recommendation_agent=(
+            FakeRecommendationAgent()
+        ),
+        explanation_agent=(
+            FakeExplanationAgent()
+        ),
     )
 
     state = graph.run(

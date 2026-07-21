@@ -2,26 +2,39 @@ from typing import Any, Literal
 
 from langgraph.graph import END, START, StateGraph
 
+from src.agents.comparable_value_agent import ComparableValueAgent
 from src.agents.compliance_agent import ComplianceAgent
 from src.agents.explanation_agent import ExplanationAgent
 from src.agents.intent_agent import IntentAgent
+from src.agents.market_agent import MarketAgent
+from src.agents.negotiation_agent import NegotiationAgent
+from src.agents.preference_match_agent import PreferenceMatchAgent
 from src.agents.recommendation_agent import RecommendationAgent
 from src.agents.search_agent import SearchAgent
 from src.memory.session_memory import SessionMemory
 from src.schemas.state_schema import AgentState
+from src.search.mysql_sold_comp_repository import MySQLSoldCompRepository
 
 
 class PropertySearchGraph:
     """
-    LangGraph-based property search workflow with session memory
-    and Fair Housing compliance guardrails.
+    LangGraph-based property search workflow with session memory,
+    Fair Housing compliance guardrails, market analysis, and
+    multi-signal property recommendation scoring.
     """
+
+    SEARCH_CANDIDATE_LIMIT = 50
+    RECOMMENDATION_LIMIT = 5
 
     def __init__(
         self,
         search_agent: SearchAgent,
         memory: SessionMemory | None = None,
         compliance_agent: ComplianceAgent | None = None,
+        market_agent: MarketAgent | None = None,
+        preference_match_agent: PreferenceMatchAgent | None = None,
+        comparable_value_agent: ComparableValueAgent | None = None,
+        negotiation_agent: NegotiationAgent | None = None,
         recommendation_agent: RecommendationAgent | None = None,
         explanation_agent: ExplanationAgent | None = None,
     ) -> None:
@@ -37,8 +50,37 @@ class PropertySearchGraph:
             else ComplianceAgent()
         )
 
-        self.intent_agent = IntentAgent(memory=self.memory)
+        self.intent_agent = IntentAgent(
+            memory=self.memory
+        )
+
         self.search_agent = search_agent
+
+        self.market_agent = (
+            market_agent
+            if market_agent is not None
+            else MarketAgent(
+                repository=MySQLSoldCompRepository()
+            )
+        )
+
+        self.preference_match_agent = (
+            preference_match_agent
+            if preference_match_agent is not None
+            else PreferenceMatchAgent()
+        )
+
+        self.comparable_value_agent = (
+            comparable_value_agent
+            if comparable_value_agent is not None
+            else ComparableValueAgent()
+        )
+
+        self.negotiation_agent = (
+            negotiation_agent
+            if negotiation_agent is not None
+            else NegotiationAgent()
+        )
 
         self.recommendation_agent = (
             recommendation_agent
@@ -53,7 +95,6 @@ class PropertySearchGraph:
         )
 
         self.graph = self._build_graph()
-
 
     def _build_graph(self):
         """
@@ -132,7 +173,6 @@ class PropertySearchGraph:
 
         return builder.compile()
 
-
     def run(
         self,
         user_query: str,
@@ -147,7 +187,9 @@ class PropertySearchGraph:
         }
 
         try:
-            result = self.graph.invoke(initial_state)
+            result = self.graph.invoke(
+                initial_state
+            )
 
             return result
 
@@ -158,14 +200,14 @@ class PropertySearchGraph:
             )
 
             return initial_state
-        
 
     def clear_session(self) -> None:
         self.memory.clear()
 
-    def get_memory_snapshot(self) -> dict[str, Any]:
+    def get_memory_snapshot(
+        self,
+    ) -> dict[str, Any]:
         return self.memory.to_dict()
-    
 
     @staticmethod
     def _route_after_query_compliance(
@@ -176,18 +218,22 @@ class PropertySearchGraph:
 
         Safe and non-blocking queries continue to intent parsing.
         """
-        if state.get("blocked", False):
+        if state.get(
+            "blocked",
+            False,
+        ):
             return "blocked"
 
         return "continue"
-    
 
     def _check_query_compliance(
         self,
         state: AgentState,
     ) -> dict[str, Any]:
-        report = self.compliance_agent.check_query(
-            state["user_query"]
+        report = (
+            self.compliance_agent.check_query(
+                state["user_query"]
+            )
         )
 
         updates: dict[str, Any] = {
@@ -202,7 +248,6 @@ class PropertySearchGraph:
             )
 
         return updates
-    
 
     def _parse_intent(
         self,
@@ -214,58 +259,155 @@ class PropertySearchGraph:
 
         return {
             "intent": intent,
-            "memory_snapshot": self.memory.to_dict(),
+            "memory_snapshot": (
+                self.memory.to_dict()
+            ),
         }
-    
 
     def _search_properties(
         self,
         state: AgentState,
     ) -> dict[str, Any]:
-        search_results = self.search_agent.run(
-            state["intent"]
+        """
+        Retrieve a larger candidate pool for downstream reranking.
+        """
+        search_results = (
+            self.search_agent.run(
+                state["intent"],
+                limit=self.SEARCH_CANDIDATE_LIMIT,
+            )
         )
 
         return {
             "search_results": search_results,
         }
-    
 
     def _generate_recommendations(
         self,
         state: AgentState,
     ) -> dict[str, Any]:
-        recommendations = self.recommendation_agent.run(
-            state.get("search_results", [])
+        """
+        Analyze each candidate listing, calculate a multi-signal
+        recommendation score, and return the final Top N results.
+        """
+        intent = state["intent"]
+
+        search_results = state.get(
+            "search_results",
+            [],
+        )
+
+        scored_recommendations = []
+
+        for listing in search_results:
+            market_context = (
+                self.market_agent.analyze_listing(
+                    listing=listing,
+                    months=12,
+                    market_limit=500,
+                    comparable_limit=100,
+                    minimum_comps=5,
+                )
+            )
+
+            preference_analysis = (
+                self.preference_match_agent.run(
+                    listing=listing,
+                    intent=intent,
+                )
+            )
+
+            comparable_value_analysis = (
+                self.comparable_value_agent.run(
+                    listing=listing,
+                    market_context=market_context,
+                )
+            )
+
+            negotiation_analysis = (
+                self.negotiation_agent.run(
+                    listing=listing,
+                    market_context=market_context,
+                )
+            )
+
+            recommendation = (
+                self.recommendation_agent.score_listing(
+                    listing=listing,
+                    preference_analysis=(
+                        preference_analysis
+                    ),
+                    comparable_value_analysis=(
+                        comparable_value_analysis
+                    ),
+                    negotiation_analysis=(
+                        negotiation_analysis
+                    ),
+                )
+            )
+
+            scored_recommendations.append(
+                recommendation
+            )
+
+        recommendations = (
+            self.recommendation_agent.rank(
+                recommendations=(
+                    scored_recommendations
+                ),
+                limit=self.RECOMMENDATION_LIMIT,
+            )
         )
 
         return {
             "recommendations": recommendations,
         }
 
-
     def _generate_explanation(
         self,
         state: AgentState,
     ) -> dict[str, Any]:
-        explanation = self.explanation_agent.run(
-            state["intent"],
-            state.get("recommendations", []),
+        """
+        Temporarily preserve the existing ExplanationAgent interface.
+
+        RecommendationScore objects are converted back to their
+        underlying ListingSchema objects until ExplanationAgent is
+        upgraded to use recommendation scores and reasons directly.
+        """
+        recommendations = state.get(
+            "recommendations",
+            [],
+        )
+
+        recommended_listings = [
+            recommendation.listing
+            for recommendation in recommendations
+        ]
+
+        explanation = (
+            self.explanation_agent.run(
+                state["intent"],
+                recommended_listings,
+            )
         )
 
         return {
             "explanation": explanation,
         }
-    
 
     def _check_output_compliance(
         self,
         state: AgentState,
     ) -> dict[str, Any]:
-        explanation = state.get("explanation", "")
+        explanation = state.get(
+            "explanation",
+            "",
+        )
 
-        report = self.compliance_agent.check_output(
-            explanation
+        report = (
+            self.compliance_agent.check_output(
+                explanation
+            )
         )
 
         updates: dict[str, Any] = {
@@ -285,16 +427,20 @@ class PropertySearchGraph:
         if report.risk_level == "yellow":
             updates["final_response"] = (
                 report.safe_rewrite
-                or self.compliance_agent.SAFE_REWRITE_MESSAGE
+                or self.compliance_agent
+                .SAFE_REWRITE_MESSAGE
             )
 
             return updates
 
-        query_report = state.get("query_compliance")
+        query_report = state.get(
+            "query_compliance"
+        )
 
         if (
             query_report is not None
-            and query_report.risk_level == "yellow"
+            and query_report.risk_level
+            == "yellow"
         ):
             notice = (
                 "I’m using only neutral, objective property criteria "
@@ -307,10 +453,8 @@ class PropertySearchGraph:
             )
 
         else:
-            updates["final_response"] = explanation
+            updates["final_response"] = (
+                explanation
+            )
 
         return updates
-    
-
-
-
