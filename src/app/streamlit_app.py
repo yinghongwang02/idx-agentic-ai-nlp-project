@@ -131,10 +131,13 @@ if st.button("Search"):
         )
 
     else:
-        state = (
-            st.session_state.workflow
-            .run(query)
-        )
+        with st.spinner(
+            "Analyzing properties and market data... This may take a moment 😄"
+        ):
+            state = (
+                st.session_state.workflow
+                .run(query)
+            )
 
         if state.get("error"):
             st.error(
@@ -157,13 +160,18 @@ if st.button("Search"):
             top_listing = None
 
             if recommendations:
-                first_listing = (
+                first_recommendation = (
                     recommendations[0]
+                )
+
+                first_listing = (
+                    first_recommendation.listing
                 )
 
                 top_listing = (
                     first_listing.listing_id
                     or first_listing.listing_key
+                    or first_listing.unparsed_address
                 )
 
             st.session_state.search_history.insert(
@@ -250,18 +258,65 @@ if st.button("Search"):
                 )
 
             else:
-                for listing in recommendations:
+                for rank, recommendation in enumerate(
+                    recommendations,
+                    start=1,
+                ):
+                    listing = recommendation.listing
+
                     with st.container(
                         border=True
                     ):
                         listing_name = (
                             listing.listing_id
                             or listing.listing_key
+                            or listing.unparsed_address
                         )
 
                         st.markdown(
-                            f"### {listing_name}"
+                            f"### #{rank} {listing_name}"
                         )
+
+                        metric_col1, metric_col2 = (
+                            st.columns(2)
+                        )
+
+                        with metric_col1:
+                            st.metric(
+                                "Recommendation Score",
+                                (
+                                    f"{recommendation.overall_score:.2f}"
+                                    "/100"
+                                ),
+                            )
+
+                        with metric_col2:
+                            st.metric(
+                                "Recommendation",
+                                recommendation.recommendation_label,
+                            )
+
+                        score_col1, score_col2, score_col3 = (
+                            st.columns(3)
+                        )
+
+                        with score_col1:
+                            st.metric(
+                                "Preference Match",
+                                f"{recommendation.preference_match_score:.2f}",
+                            )
+
+                        with score_col2:
+                            st.metric(
+                                "Comparable Value",
+                                f"{recommendation.comparable_value_score:.2f}",
+                            )
+
+                        with score_col3:
+                            st.metric(
+                                "Negotiation",
+                                f"{recommendation.negotiation_score:.2f}",
+                            )
 
                         st.write(
                             f"**Address:** "
@@ -302,10 +357,22 @@ if st.button("Search"):
                             f"{listing.days_on_market}"
                         )
 
-                        st.write(
-                            f"**Remarks:** "
-                            f"{listing.public_remarks}"
-                        )
+                        if recommendation.reasons:
+                            with st.expander(
+                                "Why this property ranked here"
+                            ):
+                                for reason in recommendation.reasons:
+                                    st.write(
+                                        f"- {reason}"
+                                    )
+
+                        if listing.public_remarks:
+                            with st.expander(
+                                "Listing remarks"
+                            ):
+                                st.write(
+                                    listing.public_remarks
+                                )
 
         final_response = state.get(
             "final_response"
