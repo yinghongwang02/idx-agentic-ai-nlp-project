@@ -186,46 +186,43 @@ class IntentAgent:
             if phrase in query_lower:
                 return normalized_type
         return None
-
+    
     def _parse_preferences(
         self,
         query_lower: str,
     ) -> list[str]:
-        """
-        Parse amenities explicitly expressed as soft preferences.
-
-        Examples:
-            "preferably with a pool"
-            "prefer a garage"
-            "would like a view"
-            "nice to have a backyard"
-            "ideally with a pool"
-        """
-
-        preference_patterns = [
-            r"preferably(?:\s+with)?\s+(?:a|an)?\s*{keyword}",
-            r"prefer(?:\s+with)?\s+(?:a|an)?\s*{keyword}",
-            r"would like(?:\s+to have)?\s+(?:a|an)?\s*{keyword}",
-            r"nice to have\s+(?:a|an)?\s*{keyword}",
-            r"ideally(?:\s+with)?\s+(?:a|an)?\s*{keyword}",
+        preference_markers = [
+            "preferably",
+            "prefer",
+            "would like",
+            "nice to have",
+            "ideally",
         ]
 
-        preferences: list[str] = []
+        preference_start = None
+
+        for marker in preference_markers:
+            marker_index = query_lower.find(marker)
+
+            if marker_index != -1:
+                preference_start = marker_index
+                break
+
+        if preference_start is None:
+            return []
+
+        preference_text = query_lower[
+            preference_start:
+        ]
+
+        preferences = []
 
         for keyword in self.KEYWORD_CANDIDATES:
-            escaped_keyword = re.escape(keyword)
-
-            for pattern in preference_patterns:
-                regex = pattern.format(
-                    keyword=escaped_keyword,
-                )
-
-                if re.search(regex, query_lower):
-                    preferences.append(keyword)
-                    break
+            if keyword in preference_text:
+                preferences.append(keyword)
 
         return preferences
-    
+
     def _parse_keywords(
         self,
         query_lower: str,

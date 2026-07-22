@@ -38,3 +38,38 @@ def test_intent_agent_extracts_multiple_keywords():
     assert "ocean view" in intent.keywords
     assert "remodeled" in intent.keywords
     assert "garage" in intent.keywords
+
+def test_intent_agent_parses_multiple_soft_preferences():
+    agent = IntentAgent()
+
+    intent = agent.run(
+        "Find 3 bedroom homes in Irvine with a garage, "
+        "preferably with a pool and a view."
+    )
+
+    assert intent.keywords == ["garage"]
+    assert intent.preferences == ["pool", "view"]
+
+
+def test_intent_agent_keeps_non_preferred_features_as_keywords():
+    agent = IntentAgent()
+
+    intent = agent.run(
+        "Find homes in Irvine with a garage and a pool"
+    )
+
+    assert "garage" in intent.keywords
+    assert "pool" in intent.keywords
+    assert intent.preferences == []
+
+
+def test_intent_agent_parses_single_soft_preference():
+    agent = IntentAgent()
+
+    intent = agent.run(
+        "Find homes in Irvine with a garage, "
+        "preferably with a pool"
+    )
+
+    assert intent.keywords == ["garage"]
+    assert intent.preferences == ["pool"]

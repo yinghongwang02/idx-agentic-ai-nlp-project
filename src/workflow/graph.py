@@ -368,33 +368,23 @@ class PropertySearchGraph:
         state: AgentState,
     ) -> dict[str, Any]:
         """
-        Temporarily preserve the existing ExplanationAgent interface.
-
-        RecommendationScore objects are converted back to their
-        underlying ListingSchema objects until ExplanationAgent is
-        upgraded to use recommendation scores and reasons directly.
+        Generate a recommendation explanation directly from
+        ranked RecommendationScore objects.
         """
-        recommendations = state.get(
-            "recommendations",
-            [],
-        )
-
-        recommended_listings = [
-            recommendation.listing
-            for recommendation in recommendations
-        ]
-
         explanation = (
             self.explanation_agent.run(
                 state["intent"],
-                recommended_listings,
+                state.get(
+                    "recommendations",
+                    [],
+                ),
             )
         )
 
         return {
             "explanation": explanation,
         }
-
+    
     def _check_output_compliance(
         self,
         state: AgentState,
