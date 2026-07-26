@@ -4,33 +4,51 @@
 
 This repository contains my individual project work for the IDX Exchange Summer 2026 internship.
 
-The project explores an Agentic AI workflow for conversational property search. Users can describe property requirements in natural language, refine their preferences across multiple turns, and receive matching MLS-style property recommendations.
+The project explores an **Agentic AI workflow** for conversational real estate search, recommendation, and explanation. Instead of treating property search as a single retrieval task, the system decomposes the workflow into multiple specialized AI agents responsible for natural language understanding, conversational memory, structured search, market analysis, recommendation ranking, explanation generation, and compliance enforcement.
 
-The system converts natural language requests into structured property intents, preserves relevant search preferences through session memory, retrieves matching listings from a MySQL-backed MLS database, ranks the results, and generates explanations for the recommendations.
+Users can describe property requirements in natural language, refine their preferences through multiple conversational turns, and receive explainable property recommendations generated from a production-oriented MLS database.
 
-The workflow is orchestrated using LangGraph and includes Fair Housing compliance guardrails for both incoming user queries and generated outputs. A Repository Pattern keeps the search layer modular, allowing different data sources to be used without changing the higher-level agent workflow.
+The workflow is orchestrated using **LangGraph**, follows a modular **multi-agent architecture**, and adopts the **Repository Pattern** to separate business logic from data access. This design allows individual components to evolve independently while maintaining a consistent end-to-end workflow.
+
+Current capabilities include:
+
+- Natural language property search
+- Multi-turn conversational memory
+- Fair Housing compliance guardrails
+- LangGraph workflow orchestration
+- MySQL-backed MLS search
+- Market-aware recommendation pipeline
+- Explainable AI recommendations
+- Interactive Streamlit interface
+- Automated regression testing with Pytest
 
 ---
 
-## Current Features
+# Current Features
 
-### Natural Language Property Search
+## Natural Language Property Search
 
-The system accepts natural language property search requests and converts them into a structured property intent.
+The system accepts conversational property search requests and converts them into a structured property intent that serves as the interface between natural language understanding and downstream search components.
 
-The current parser extracts:
+Rather than relying on keyword matching alone, the Intent Agent extracts structured search constraints from free-form user requests.
+
+The current parser supports:
 
 - City
-- Budget
-- Bedrooms
-- Bathrooms
+- Maximum budget
+- Minimum bedrooms
+- Minimum bathrooms
 - Property type
-- Preference keywords
+- Hard search keywords
+- Soft user preferences
 
 Example:
 
 ```text
-Find townhouses in Irvine under 1.2 million with a garage
+Find townhouses in Irvine
+under 1.2 million
+with a garage,
+preferably with a pool and a view.
 
 ↓
 
@@ -41,22 +59,27 @@ PropertyIntent
     max_price: 1200000
     property_type: Townhouse
     keywords: ["garage"]
+    preferences: ["pool", "view"]
 }
 ```
-The structured intent provides a typed interface between natural language understanding and the downstream property search system. 
+
+Separating hard constraints from soft preferences enables the recommendation system to distinguish between mandatory search requirements and desirable lifestyle features during downstream ranking.
+
+Current intent parsing focuses on deterministic extraction using rule-based patterns. The modular design allows future integration of LLM-assisted parsing without changing the surrounding workflow.
 
 ---
 
-### Multi-turn Conversational Search
+## Multi-turn Conversational Search
 
-The workflow supports follow-up property search requests through session-based memory.
+Real estate searches naturally evolve over multiple conversational turns.
 
-Users do not need to repeat all previous search criteria in every query.
+Instead of requiring users to restate every search criterion, the workflow maintains a session-aware memory that accumulates meaningful search preferences throughout the conversation.
 
 Example:
 
 ```text
-Turn 1:
+Turn 1
+
 Find townhouses in Irvine
 
 ↓
@@ -65,9 +88,11 @@ Find townhouses in Irvine
     city: Irvine
     property_type: Townhouse
 }
+```
 
+```text
+Turn 2
 
-Turn 2:
 Under 1.2 million
 
 ↓
@@ -77,10 +102,14 @@ Under 1.2 million
     property_type: Townhouse
     max_price: 1200000
 }
+```
 
+```text
+Turn 3
 
-Turn 3:
-At least 3 bedrooms with a garage
+At least 3 bedrooms
+with a garage,
+preferably with a pool.
 
 ↓
 
@@ -90,157 +119,189 @@ At least 3 bedrooms with a garage
     max_price: 1200000
     min_bedrooms: 3
     keywords: ["garage"]
+    preferences: ["pool"]
 }
 ```
 
-The SessionMemory component:
+The SessionMemory component is responsible for:
 
-- Stores meaningful search preferences
-- Ignores empty or unknown fields
-- Updates scalar preferences when the user changes a constraint
-- Merges and deduplicates preference keywords
-- Provides defensive memory snapshots
-- Supports clearing the current search session
+- Persisting meaningful search preferences
+- Ignoring empty or unknown fields
+- Updating scalar constraints when users change requirements
+- Merging and deduplicating keyword lists
+- Maintaining separate hard and soft preferences
+- Providing defensive memory snapshots
+- Supporting complete session reset
 
-Blocked compliance requests are prevented from modifying the active search memory.
+To prevent unintended behavior, requests blocked by the compliance layer never modify the active conversation memory.
+
+This design enables a more natural conversational experience while keeping the property search workflow deterministic and predictable.
 
 ---
 
-### Fair Housing Compliance Guardrails
+## Fair Housing Compliance Guardrails
 
-The workflow includes a rule-based Fair Housing compliance layer for both user queries and generated responses.
+The workflow includes a rule-based Fair Housing compliance layer that evaluates both incoming user requests and generated model responses.
 
-Compliance results are classified into three risk levels:
+Compliance checking occurs at two independent stages:
 
-- Green — the request can continue normally
-- Yellow — the request requires neutral, objective handling
-- Red — the request is blocked before property search
+```text
+User Query
+      │
+      ▼
+Query Compliance
+      │
+      ▼
+Agent Workflow
+      │
+      ▼
+Generated Response
+      │
+      ▼
+Output Compliance
+```
 
-Examples of supported compliance checks include:
+This dual-layer design reduces the likelihood of unsafe requests entering the workflow while also preventing potentially problematic generated content from reaching the user.
+
+Current compliance results are classified into three risk levels:
+
+| Risk Level | Behavior |
+|------------|----------|
+| Green | Continue normally |
+| Yellow | Continue with neutral, objective language |
+| Red | Block before workflow execution |
+
+Current rule coverage includes:
 
 - Protected-class housing preferences
-- Familial-status exclusions
+- Familial status discrimination
 - Religion-based housing requests
-- National-origin preferences
-- Sex or gender-based restrictions
+- National origin discrimination
+- Sex and gender restrictions
 - Disability-related exclusionary requests
 - Subjective neighborhood safety language
 - School-quality proxy language
-- Demographic steering in generated recommendations
+- Demographic steering
 
-The compliance system also distinguishes exclusionary requests from legitimate accessibility-related property requirements. 
+The compliance system also distinguishes between exclusionary language and legitimate accessibility-related housing needs.
 
-For example:
+For example,
 
-```bash
+```text
 Avoid homes near disabled residents.
 ```
 
-is treated differently from:
+is treated differently from
 
-```bash
+```text
 Find a wheelchair-accessible home.
 ```
 
-Compliance reports include:
+Each compliance decision includes:
 
 - Risk level
-- Matched compliance categories
+- Matched rule category
 - Matched text
-- Reason for the match
+- Explanation
 - Block decision
 - Safe rewrite guidance
-- Refusal message when required
+- Refusal message (when required)
 - Rule version
 
-The current implementation provides a deterministic compliance baseline that can later be extended with LLM-assisted classification. 
+The current implementation provides a deterministic baseline that can later be extended using LLM-assisted compliance classification.
 
 ---
 
-### LangGraph Workflow Orchestration
+## LangGraph Workflow Orchestration
 
-The property search pipeline is implemented as a LangGraph StateGraph.
+The entire property search workflow is implemented as a LangGraph StateGraph.
 
-The workflow maintains a shared AgentState containing information such as:
+Instead of treating property search as a single function call, the workflow coordinates multiple specialized agents through a shared AgentState.
 
-- User query
+The current state stores information including:
+
+- Original user query
 - Query compliance result
 - Parsed property intent
 - Session memory snapshot
-- Search results
-- Recommendations
+- Search candidates
+- Recommendation results
 - Generated explanation
 - Output compliance result
 - Final response
-- Workflow control and error state
+- Workflow control state
 
-The current graph follows this execution path:
+The current execution path is:
 
-```
-
+```text
 START
-  │
-  ▼
+   │
+   ▼
 Query Compliance
-  │
-  ├── Red / Blocked ───────────────► END
-  │
-  └── Continue
-          │
-          ▼
-   Intent + Memory
-          │
-          ▼
-        Search
-          │
-          ▼
-    Recommendation
-          │
-          ▼
-      Explanation
-          │
-          ▼
-  Output Compliance
-          │
-          ▼
-         END
+   │
+   ├──────────── Block ───────────► END
+   │
+   ▼
+Intent Agent
+   │
+   ▼
+Session Memory
+   │
+   ▼
+Search Agent
+   │
+   ▼
+Recommendation Pipeline
+   │
+   ▼
+Explanation Agent
+   │
+   ▼
+Output Compliance
+   │
+   ▼
+END
 ```
 
-LangGraph conditional routing ensures that blocked requests terminate before intent parsing, memory updates, database search, recommendation, and explanation generation.
+Conditional routing allows the workflow to terminate immediately when unsafe requests are detected, preventing unnecessary computation and ensuring that blocked requests never reach downstream components.
 
-This keeps compliance enforcement at the workflow level rather than relying only on individual agents.
-
---- 
-
-### Structured Property Search
-
-The extracted and memory-enriched property intent is used to retrieve matching MLS-style listings.
-
-The search pipeline combines:
-
-- Structured filtering
-  - City
-  - Budget
-  - Bedrooms
-  - Bathrooms
-  - Property type
-
-- Keyword matching
-  - Search over listing descriptions (`public_remarks`)
-
-The current project supports both a lightweight CSV dataset for local development and a MySQL-backed MLS database for production-oriented search. The search layer is designed to be replaced by a production database without changing the agent workflow.
+The recommendation pipeline itself is composed of multiple independent analysis agents and is described in the following section of this README.
 
 ---
 
-### MySQL-backed Search Layer
+## Structured Property Search
 
-The search module now supports a production-oriented MySQL backend while retaining the original CSV repository for lightweight testing and development. 
+Once a structured PropertyIntent has been generated, the Search Agent retrieves candidate properties using deterministic filtering.
 
-The Query Builder generates parameterized SQL, while the PropertyFormatter converts raw MLS records into typed ListingSchema objects. 
+Current hard filtering supports:
 
-The search pipeline is organized using a Repository Pattern:
+- City
+- Budget
+- Bedrooms
+- Bathrooms
+- Property type
+- Required keywords
 
-```
+Keyword matching is performed over MLS listing remarks, allowing users to search for specific property characteristics such as:
+
+- garage
+- backyard
+- fireplace
+- remodeled kitchen
+
+Hard constraints determine which listings are eligible for retrieval.
+
+Soft preferences are intentionally excluded from database filtering and are instead evaluated during the downstream recommendation stage. This separation preserves recall while allowing the recommendation system to rank properties according to user lifestyle preferences.
+
+---
+
+## MySQL-backed Search Layer
+
+The project supports both lightweight local development and production-oriented database search through a unified repository interface.
+
+The search layer follows the Repository Pattern:
+
+```text
 PropertyIntent
         │
         ▼
@@ -248,8 +309,8 @@ PropertyQueryBuilder
         │
         ▼
 SearchRepository
-   ├── CSVSearchRepository
-   └── MySQLSearchRepository
+      ├── CSVSearchRepository
+      └── MySQLSearchRepository
         │
         ▼
 PropertyFormatter
@@ -258,163 +319,397 @@ PropertyFormatter
 ListingSchema
 ```
 
+Responsibilities are intentionally separated:
 
-Key design features include:
+| Component | Responsibility |
+|----------|----------------|
+| PropertyQueryBuilder | Generate parameterized SQL |
+| SearchRepository | Execute database queries |
+| PropertyFormatter | Convert raw MLS records into typed objects |
+| ListingSchema | Standardize downstream data representation |
 
-- Parameterized SQL queries
+The MySQL implementation provides:
+
+- Parameterized SQL generation
 - SQL injection protection
-- Query Builder abstraction
-- Repository Pattern
-- Listing formatter for MLS records
-- Pydantic-based typed data models
+- Repository abstraction
+- Typed Pydantic models
+- Replaceable data sources
+- Consistent search interface
 
-The same search interface can be reused with different data sources without changing the agent workflow.
-
----
-
-### Property Recommendation
-
-Matching listings are ranked using a simple recommendation strategy based on:
-
-- Days on market
-- Listing price
-
-Top recommendations are returned to the user.
+Because higher-level agents depend only on the repository interface rather than a specific database implementation, the workflow can easily switch between CSV datasets, local MySQL instances, or future production MLS services without changing business logic.
 
 ---
 
-### Explainable Recommendations
+# Recommendation Pipeline
 
-The Explanation Agent generates a natural language response describing the property search results.
+After the Search Agent retrieves candidate properties using deterministic hard filters, the system performs a second-stage recommendation workflow that analyzes each candidate from multiple perspectives before generating the final ranking.
 
-Generated text is passed through the output compliance layer before being returned to the user.
+Instead of ranking properties using only search relevance, the recommendation pipeline introduces several specialized analysis agents that evaluate different aspects of a listing independently.
 
-This creates two compliance checkpoints:
+The current recommendation workflow consists of three specialized analysis agents and one aggregation agent.
+
+| Agent | Responsibility |
+|--------|----------------|
+| PreferenceMatchAgent | Measures how well a listing satisfies user soft preferences. |
+| ComparableValueAgent | Estimates whether the asking price appears attractive relative to recent comparable sales. |
+| NegotiationAgent | Estimates potential negotiation opportunity using market behavior. |
+| RecommendationAgent | Aggregates all analysis into a unified recommendation score. |
+
+The overall workflow is shown below.
 
 ```text
-User Query
-    │
-    ▼
-Query Compliance
-    │
-    ▼
-Agent Workflow
-    │
-    ▼
-Generated Explanation
-    │
-    ▼
-Output Compliance
-    │
-    ▼
-Final Response
+PropertyIntent
+        │
+        ▼
+Search Agent
+(Hard Constraints)
+        │
+        ▼
+Retrieved Candidate Listings
+        │
+        ▼
+ ┌────────────────────────────────────────────┐
+ │ PreferenceMatchAgent                       │
+ │ ComparableValueAgent                       │
+ │ NegotiationAgent                           │
+ └────────────────────────────────────────────┘
+        │
+        ▼
+RecommendationAgent
+        │
+        ▼
+Top Ranked Properties
+        │
+        ▼
+ExplanationAgent
 ```
 
-Potentially problematic generated language can therefore be replaced with neutral guidance before reaching the user.
+This architecture separates retrieval from ranking.
 
-
-For queries passed through the compliance check, the system generates a natural language explanation describing why the listing satisfies the user's request. 
-
-Example:
-
-> Matched because it is in Irvine, under your budget, has at least 3 bedrooms, and the listing remarks mention "backyard".
-
+The Search Agent determines which properties satisfy mandatory user requirements, while the Recommendation Pipeline estimates which of those properties are likely to provide the best overall purchasing opportunity.
 
 ---
 
-### Interactive Streamlit Demo
+## Recommendation Score
 
-The Streamlit application is integrated with the LangGraph workflow and supports persistent session memory.
+The final recommendation score combines three complementary evaluation signals.
 
-Features include:
+The current MVP uses an interpretable heuristic weighting strategy: 
+
+| Component | Weight |
+|-----------|-------:|
+| Preference Match | 40% |
+| Comparable Value | 35% |
+| Negotiation Opportunity | 25% |
+
+These initial weights are designed for deterministic MVP behavior and can later be refined through systematic evaluation. 
+
+Each component represents a different dimension of decision making.
+
+**Preference Match**
+
+Measures how well a listing satisfies optional lifestyle preferences extracted from the user's natural language query.
+
+Examples include:
+
+- Pool
+- View
+
+These preferences influence ranking without excluding otherwise suitable listings.
+
+---
+
+**Comparable Value**
+
+Estimates whether a property's asking price appears attractive relative to similar recently sold properties.
+
+Instead of evaluating price in isolation, the analysis compares each listing against recent comparable sales from the surrounding market using a price-per-square-foot (PPSF) approach. This provides market context and allows the recommendation system to assess value relative to similar homes rather than the overall housing market.
+
+The analysis also considers the quality of the comparable set, allowing confidence to vary depending on how closely recent sales match the target property.
+
+---
+
+**Negotiation Opportunity**
+
+Estimates the likelihood that a property may offer greater pricing flexibility than similar listings.
+
+Rather than predicting the final sale price, the analysis evaluates market signals associated with buyer negotiation opportunities. Current signals include:
+
+- Days on Market relative to comparable listings
+- Average sale-to-list price ratio observed in recent comparable sales
+
+These signals are combined into a negotiation score that estimates whether current market conditions appear more or less favorable for buyers. 
+
+---
+
+The weighted recommendation score provides a unified ranking while preserving the individual component scores for explanation and future model improvements.
+
+---
+
+## Preference Match Analysis
+
+Many user requirements are preferences rather than mandatory constraints.
+
+For example,
+
+```text
+Find a home
+with a garage,
+preferably with a pool
+and a view.
+```
+
+In this example,
+
+```text
+garage
+```
+
+is treated as a hard search requirement, while
+
+```text
+pool
+view
+```
+
+are treated as soft preferences.
+
+The Search Agent first retrieves properties satisfying all mandatory constraints.
+
+The PreferenceMatchAgent then evaluates how many optional preferences are satisfied by each candidate property.
+
+This two-stage design increases search recall while still allowing listings that better match user lifestyle preferences to appear higher in the final ranking.
+
+---
+
+## Comparable Value Analysis
+
+Price alone provides limited information about whether a property represents a good buying opportunity.
+
+The ComparableValueAgent evaluates each listing using recent comparable sales from the surrounding market rather than relying solely on the asking price.
+
+Current analysis includes:
+
+- Comparable property selection
+- Price-per-square-foot (PPSF) comparison
+- Comparable confidence estimation
+
+The PPSF comparison measures how the listing's asking price relates to similar recently sold properties, while the confidence estimation reflects how representative the comparable sales are for the target property.
+
+To improve robustness, comparable properties are retrieved using a progressive matching strategy. The system first attempts to identify highly similar properties using strict matching criteria. If an insufficient number of comparable sales are available, the search is gradually relaxed before falling back to broader market-level comparisons.
+
+This multi-stage retrieval strategy helps maintain reliable comparable analysis across different property types and market conditions while preserving the highest-quality matches whenever possible.
+
+The current implementation is intentionally modular so that more advanced valuation models can be incorporated in future iterations without changing the overall recommendation workflow.
+
+---
+
+## Negotiation Analysis
+
+The NegotiationAgent estimates whether current market conditions may provide favorable negotiation opportunities for buyers.
+
+Current analysis considers:
+
+- Days on Market relative to comparable listings
+- Average sale-to-list price ratio in recent comparable sales
+
+Properties that remain on the market longer than similar homes may indicate increased pricing flexibility.
+
+In addition, recent comparable sales provide insight into local negotiation behavior. Markets with lower average sale-to-list price ratios generally suggest that buyers have been able to purchase properties below their asking prices.
+
+The resulting negotiation score is used as one component of the overall recommendation score rather than a prediction of the final transaction price.
+
+---
+
+## Explainable Recommendations
+
+Rather than returning only a ranked property list, the system generates an explanation describing why each recommendation appears near the top of the results.
+
+Each recommendation includes:
+
+- Recommendation Score
+- Recommendation Label
+- Preference Match Score
+- Comparable Value Score
+- Negotiation Score
+- Supporting Reasons
+
+Example output:
+
+```text
+Recommendation Score: 91.8
+
+Strong Match
+
+Preference Match
+✓ Pool
+✓ View
+
+Comparable Value
+Asking PPSF appears favorable
+relative to recent comparable sales.
+
+Negotiation
+Property has remained on the market
+longer than comparable listings,
+suggesting additional negotiation opportunity.
+```
+
+Providing transparent reasoning allows users to understand how different factors contribute to the final recommendation instead of treating the ranking as a black box.
+
+The explanation layer is generated after recommendation ranking and is subsequently passed through the output compliance module before being returned to the user.
+
+---
+
+# Interactive Streamlit Application
+
+A Streamlit application provides an interactive interface for the complete LangGraph workflow.
+
+Current functionality includes:
 
 - Natural language property search
-- Multi-turn follow-up queries
-- Session-based property preference memory
-- Live memory visualization
+- Multi-turn conversational memory
 - Structured intent visualization
-- MySQL-backed property search
-- Property recommendations
-- Generated explanations
+- Session memory visualization
+- Recommendation pipeline execution
+- Explainable recommendations
 - Query compliance feedback
-- Output compliance guardrails
-- Session-based search history
-- Start New Search / memory reset
+- Output compliance validation
+- Session search history
+- Start New Search support
 
-The LangGraph workflow instance is stored in Streamlit session state, allowing search preferences to persist across Streamlit reruns within the same user session.
+The Streamlit application stores the LangGraph workflow inside the user session, allowing conversational search preferences to persist across multiple interactions.
+
+The current prototype uses internal MLS datasets that are not included in this repository. Public demonstration screenshots using synthetic data are planned for a future milestone. 
 
 ---
 
-## Current Architecture
+# Current Architecture
 
+The complete Week 5 workflow is illustrated below.
+
+```text
+                              User Query
+                                   │
+                                   ▼
+                         Query Compliance
+                                   │
+                     ┌─────────────┴─────────────┐
+                     │                           │
+                 Blocked                    Continue
+                     │                           │
+                     ▼                           ▼
+                    END                   Intent Agent
+                                               │
+                                               ▼
+                                         Session Memory
+                                               │
+                                               ▼
+                                         Search Agent
+                                               │
+                                               ▼
+                                   Retrieved Candidate Listings
+                                               │
+                  ┌────────────────────────────┼────────────────────────────┐
+                  │                            │                            │
+                  ▼                            ▼                            ▼
+      PreferenceMatchAgent        ComparableValueAgent         NegotiationAgent
+                  │                            │                            │
+                  └───────────────┬────────────┴───────────────┬────────────┘
+                                  │
+                                  ▼
+                       RecommendationAgent
+                                  │
+                                  ▼
+                         Top Ranked Properties
+                                  │
+                                  ▼
+                          ExplanationAgent
+                                  │
+                                  ▼
+                         Output Compliance
+                                  │
+                                  ▼
+                           Final Response
 ```
-                         User Query
-                              │
-                              ▼
-                    Query Compliance
-                              │
-                 ┌────────────┴────────────┐
-                 │                         │
-              Blocked                  Continue
-                 │                         │
-                 ▼                         ▼
-                END                Intent Agent
-                                           │
-                                           ▼
-                                    Session Memory
-                                           │
-                                           ▼
-                                    PropertyIntent
-                                           │
-                                           ▼
-                                 PropertyQueryBuilder
-                                           │
-                                           ▼
-                                    SearchRepository
-                                    ├── CSV
-                                    └── MySQL
-                                           │
-                                           ▼
-                                   PropertyFormatter
-                                           │
-                                           ▼
-                                    Recommendation
-                                           │
-                                           ▼
-                                      Explanation
-                                           │
-                                           ▼
-                                  Output Compliance
-                                           │
-                                           ▼
-                                     Final Response
-```
+
+This architecture cleanly separates retrieval, analysis, recommendation, explanation, and compliance into independent components.
+
+The modular design makes it straightforward to improve individual agents without changing the overall workflow and provides a clear foundation for future evaluation and ranking improvements. 
 
 ---
 
 ## Technology Stack
 
-- Python 3.10
-- LangGraph
-- LangChain
-- MySQL
-- mysql-connector-python
-- Streamlit
-- Pandas
-- Pydantic
-- Pytest
+The project combines modern Python tooling with a modular multi-agent architecture for conversational property search and recommendation.
+
+| Category | Technology |
+|----------|------------|
+| Language | Python 3.10 |
+| Workflow Orchestration | LangGraph |
+| LLM Framework | LangChain |
+| Data Validation | Pydantic |
+| Database | MySQL |
+| Frontend | Streamlit |
+| Testing | Pytest |
+| Version Control | Git & GitHub |
 
 ---
 
-## Run the Demo
+# Local Setup
 
-Install dependencies:
+## Install Dependencies
+
+```bash
+python -m venv .venv
+```
+
+```bash
+# Windows
+.venv\Scripts\activate
+
+# macOS / Linux
+source .venv/bin/activate
+```
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Ensure the MySQL database connection is configured in the local environment.
+---
+
+## Configure Environment Variables
+
+Create a local `.env` file from the provided template:
+
+```bash
+# Windows
+copy .env.example .env
+
+# macOS / Linux
+cp .env.example .env
+```
+
+The application configuration includes:
+
+- OpenAI provider settings
+- MySQL connection settings
+- Search backend selection
+
+API keys and database credentials must be supplied locally and should never be committed to version control.
+
+---
+
+## Data Access
+
+The full application uses internal IDX Exchange MLS datasets that are not included in this repository.
+
+A lightweight CSV repository is available for isolated development and testing, while a fully synthetic public demonstration dataset is planned for a future milestone. 
+
+---
+
+## Run the Demo
 
 Run the Streamlit application:
 
@@ -428,138 +723,20 @@ The application will be available locally at:
 http://localhost:8501
 ```
 
----
-### Manual Testing
+The Streamlit interface supports:
 
-The following four scenarios can be used to manually verify the Week 4 conversational workflow.
-
-1. Multi-turn Search Memory
-
-Run the following queries sequentially without starting a new search session:
-
-```text
-Find townhouses in Irvine
-```
-
-Then:
-
-```text
-Under 1.2 million
-```
-
-Then:
-
-```text
-At least 3 bedrooms with a garage
-```
-
-Expected behavior:
-
-The second query inherits Irvine and Townhouse.
-The third query inherits the previous criteria and adds the bedroom and garage preferences.
-The Session Memory panel displays the accumulated search preferences.
-
-Expected final intent:
-
-```text
-{
-    city: Irvine
-    max_price: 1200000
-    min_bedrooms: 3
-    property_type: Townhouse
-    keywords: ["garage"]
-}
-```
-
-
-2. Start a New Search
-
-Click:
-
-```text
-Start New Search
-```
-
-Then enter:
-
-```text
-Show me condos in Pasadena
-```
-
-Expected behavior:
-
-Previous Irvine search preferences are cleared.
-The new search does not inherit the previous budget, property type, bedroom, or keyword constraints.
-Session Memory contains only the new Pasadena condominium preferences. 
-
-
-3. Red-risk Compliance Request
-
-Enter:
-
-```text
-Show me homes in a Christian neighborhood
-```
-
-Expected behavior:
-
-The query is classified as red risk.
-The request is blocked before intent parsing and property search.
-No MySQL search is performed.
-The active session memory is not modified.
-A neutral refusal message is returned. 
-
-
-4. Yellow-risk Compliance Request
-
-Enter:
-
-```text
-Find homes in Irvine in the safest neighborhood with good schools
-```
-
-Expected behavior:
-
-The query is classified as yellow risk.
-The workflow continues using only neutral, objective property criteria that can be safely parsed.
-The application displays compliance guidance about subjective safety and school-quality language.
-The generated response is passed through output compliance before being shown to the user.
-
+- Natural language property search
+- Multi-turn conversational memory
+- Recommendation pipeline with score ratings
+- Explainable recommendations
+- Compliance feedback
+- Session history
 
 ---
 
-## Automated Tests
+# Testing
 
-The project includes regression tests covering individual components and end-to-end workflow behavior.
-
-Current automated tests cover:
-
-- Intent parsing
-- Multi-turn intent inheritance
-- Session memory updates
-- Session memory clearing
-- Keyword merging and deduplication
-- SQL query generation
-- CSV search repository
-- MySQL search repository
-- MLS property formatting
-- Fair Housing compliance classification
-- Protected-class request blocking
-- Accessibility-related false-positive protection
-- Query compliance
-- Output compliance
-- Blocked-request memory protection
-- Python workflow orchestration
-- LangGraph workflow orchestration
-- Conditional routing
-- Workflow exception handling
-- Memory snapshots across multiple turns
-
-The current regression suite contains:
-
-```text
-53 tests passing
-```
+The project includes automated unit tests covering the major workflow components.
 
 Run all tests:
 
@@ -567,17 +744,95 @@ Run all tests:
 pytest -v
 ```
 
-Individual Week 4 workflow tests can also be run with:
+Automated tests currently cover:
 
-```bash
-pytest tests/test_week4_workflow.py -v
+- Intent parsing
+- Session memory
+- Property query builder
+- Search repositories
+- Property formatter
+- Fair Housing compliance
+- LangGraph workflow
+- PreferenceMatchAgent
+- ComparableValueAgent
+- NegotiationAgent
+- RecommendationAgent
+
+Current status:
+
+```text
+76 tests passed
 ```
 
-and:
+Individual modules can also be tested independently during development.
+
+Example:
 
 ```bash
-pytest tests/test_week4_langgraph.py -v
+pytest tests/test_recommendation_agent.py
+pytest tests/test_negotiation_agent.py
+pytest tests/test_comparable_value_agent.py
+pytest tests/test_preference_match_agent.py
 ```
+
+---
+
+# Manual Testing
+
+The project has been manually validated using representative conversational property search scenarios.
+
+Example scenarios include:
+
+### Scenario 1
+
+```text
+Find 3 bedroom homes in Irvine
+under $1.2 million.
+```
+
+---
+
+### Scenario 2
+
+```text
+Find townhouses in Irvine
+with a garage.
+```
+
+---
+
+### Scenario 3
+
+```text
+I would also prefer
+a pool
+and a view.
+```
+
+---
+
+### Scenario 4
+
+```text
+Show me homes
+with wheelchair accessibility.
+```
+
+---
+
+### Scenario 5
+
+```text
+Find homes
+in neighborhoods
+without children.
+```
+
+Expected behavior:
+
+- Green requests proceed normally.
+- Yellow requests are rewritten using neutral language.
+- Red requests are blocked before workflow execution.
 
 ---
 
@@ -585,7 +840,7 @@ pytest tests/test_week4_langgraph.py -v
 
 Additional sample queries are available in examples/sample_queries.md.
 
-These examples demonstrate the supported natural language search capabilities of the current prototype.
+These examples demonstrate the supported natural language search capabilities of the current prototype. 
 
 ---
 
@@ -608,7 +863,10 @@ Current progress includes:
 - Repository Pattern
 - Parameterized SQL query generation
 - Keyword-based property search
-- Property recommendation
+- Comparable market analysis
+- Preference matching 
+- Negotiation analysis 
+- Recommendation pipeline
 - Explainable recommendations
 - Interactive Streamlit demo
 - Persistent Streamlit session memory
