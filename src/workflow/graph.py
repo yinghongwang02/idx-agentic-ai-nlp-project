@@ -2,6 +2,10 @@ from typing import Any, Literal
 
 from langgraph.graph import END, START, StateGraph
 
+from src.workflow.property_analysis_subgraph import (
+    PropertyAnalysisSubgraph,
+)
+
 from src.agents.comparable_value_agent import ComparableValueAgent
 from src.agents.compliance_agent import ComplianceAgent
 from src.agents.explanation_agent import ExplanationAgent
@@ -94,6 +98,20 @@ class PropertySearchGraph:
             else ExplanationAgent()
         )
 
+        self.property_analysis_subgraph = (
+            PropertyAnalysisSubgraph(
+                market_agent=self.market_agent,
+                preference_match_agent=(
+                    self.preference_match_agent
+                ),
+                comparable_value_agent=(
+                    self.comparable_value_agent
+                ),
+                negotiation_agent=self.negotiation_agent,
+                recommendation_agent=self.recommendation_agent,
+            )
+        )
+
         self.graph = self._build_graph()
 
     def _build_graph(self):
@@ -118,8 +136,8 @@ class PropertySearchGraph:
         )
 
         builder.add_node(
-            "recommend",
-            self._generate_recommendations,
+            "property_analysis",
+            self._analyze_properties,
         )
 
         builder.add_node(
@@ -153,11 +171,11 @@ class PropertySearchGraph:
 
         builder.add_edge(
             "search",
-            "recommend",
+            "property_analysis",
         )
 
         builder.add_edge(
-            "recommend",
+            "property_analysis",
             "explain",
         )
 
@@ -282,13 +300,13 @@ class PropertySearchGraph:
             "search_results": search_results,
         }
 
-    def _generate_recommendations(
+    def _analyze_properties(
         self,
         state: AgentState,
     ) -> dict[str, Any]:
         """
-        Analyze each candidate listing, calculate a multi-signal
-        recommendation score, and return the final Top N results.
+        Run the Property Analysis Subgraph for each candidate listing,
+        then rank the resulting recommendation scores.
         """
         intent = state["intent"]
 
@@ -300,61 +318,25 @@ class PropertySearchGraph:
         scored_recommendations = []
 
         for listing in search_results:
-            market_context = (
-                self.market_agent.analyze_listing(
-                    listing=listing,
-                    months=12,
-                    market_limit=500,
-                    comparable_limit=100,
-                    minimum_comps=5,
-                )
-            )
-
-            preference_analysis = (
-                self.preference_match_agent.run(
+            analysis_result = (
+                self.property_analysis_subgraph.run(
                     listing=listing,
                     intent=intent,
                 )
             )
 
-            comparable_value_analysis = (
-                self.comparable_value_agent.run(
-                    listing=listing,
-                    market_context=market_context,
-                )
+            recommendation = analysis_result.get(
+                "recommendation"
             )
 
-            negotiation_analysis = (
-                self.negotiation_agent.run(
-                    listing=listing,
-                    market_context=market_context,
+            if recommendation is not None:
+                scored_recommendations.append(
+                    recommendation
                 )
-            )
-
-            recommendation = (
-                self.recommendation_agent.score_listing(
-                    listing=listing,
-                    preference_analysis=(
-                        preference_analysis
-                    ),
-                    comparable_value_analysis=(
-                        comparable_value_analysis
-                    ),
-                    negotiation_analysis=(
-                        negotiation_analysis
-                    ),
-                )
-            )
-
-            scored_recommendations.append(
-                recommendation
-            )
 
         recommendations = (
             self.recommendation_agent.rank(
-                recommendations=(
-                    scored_recommendations
-                ),
+                recommendations=scored_recommendations,
                 limit=self.RECOMMENDATION_LIMIT,
             )
         )
