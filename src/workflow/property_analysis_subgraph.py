@@ -66,6 +66,19 @@ class PropertyAnalysisSubgraph:
     def _build_graph(self):
         """
         Build and compile the single-property analysis graph.
+
+        Parallel stages:
+
+            START
+            ├── Market Context
+            └── Preference Analysis
+
+            Market Context
+            ├── Comparable Value Analysis
+            └── Negotiation Analysis
+
+            Preference + Comparable + Negotiation
+            └── Recommendation Scoring
         """
         builder = StateGraph(PropertyAnalysisState)
 
@@ -94,28 +107,40 @@ class PropertyAnalysisSubgraph:
             self._score_recommendation,
         )
 
+        # Stage 1:
+        # Market and preference analysis are independent.
         builder.add_edge(
             START,
             "market_context",
         )
 
         builder.add_edge(
+            START,
+            "preference_analysis",
+        )
+
+        # Stage 2:
+        # Both analyses depend on market context,
+        # but they do not depend on each other.
+        builder.add_edge(
             "market_context",
-            "preference_analysis",
-        )
-
-        builder.add_edge(
-            "preference_analysis",
             "comparable_value_analysis",
         )
 
         builder.add_edge(
-            "comparable_value_analysis",
+            "market_context",
             "negotiation_analysis",
         )
 
+        # Fan-in:
+        # Recommendation scoring must wait until all three
+        # analysis signals are available.
         builder.add_edge(
-            "negotiation_analysis",
+            [
+                "preference_analysis",
+                "comparable_value_analysis",
+                "negotiation_analysis",
+            ],
             "recommendation_scoring",
         )
 

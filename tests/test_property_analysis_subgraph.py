@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import pytest
+import threading
+import time
 
 from src.schemas.intent_schema import PropertyIntent
 from src.schemas.listing_schema import ListingSchema
@@ -162,6 +164,100 @@ class FakeRecommendationAgent:
             recommendation_label="Moderate Match",
         )
 
+
+class SlowMarketAgent:
+    def __init__(
+        self,
+        barrier: threading.Barrier,
+    ) -> None:
+        self.barrier = barrier
+
+    def analyze_listing(
+        self,
+        listing: ListingSchema,
+        months: int,
+        market_limit: int,
+        comparable_limit: int,
+        minimum_comps: int,
+    ) -> dict[str, Any]:
+        self.barrier.wait(timeout=2)
+
+        time.sleep(0.05)
+
+        return {
+            "comparable_market": {
+                "median_close_price": 900_000,
+                "average_days_on_market": 35.0,
+            }
+        }
+
+
+class SlowPreferenceMatchAgent:
+    def __init__(
+        self,
+        barrier: threading.Barrier,
+    ) -> None:
+        self.barrier = barrier
+
+    def run(
+        self,
+        listing: ListingSchema,
+        intent: PropertyIntent,
+    ) -> FakePreferenceAnalysis:
+        self.barrier.wait(timeout=2)
+
+        time.sleep(0.05)
+
+        return FakePreferenceAnalysis(
+            score=50.0,
+        )
+
+
+class ParallelComparableValueAgent:
+    def __init__(
+        self,
+        barrier: threading.Barrier,
+    ) -> None:
+        self.barrier = barrier
+
+    def run(
+        self,
+        listing: ListingSchema,
+        market_context: Any,
+    ) -> FakeComparableValueAnalysis:
+        assert market_context is not None
+
+        self.barrier.wait(timeout=2)
+
+        time.sleep(0.05)
+
+        return FakeComparableValueAnalysis(
+            adjusted_value_score=75.0,
+        )
+
+
+class ParallelNegotiationAgent:
+    def __init__(
+        self,
+        barrier: threading.Barrier,
+    ) -> None:
+        self.barrier = barrier
+
+    def run(
+        self,
+        listing: ListingSchema,
+        market_context: Any,
+    ) -> FakeNegotiationAnalysis:
+        assert market_context is not None
+
+        self.barrier.wait(timeout=2)
+
+        time.sleep(0.05)
+
+        return FakeNegotiationAnalysis(
+            negotiation_score=40.0,
+        )
+    
 
 @pytest.fixture
 def listing() -> ListingSchema:
@@ -360,3 +456,70 @@ def test_property_analysis_subgraph_returns_scored_recommendation(
     assert recommendation.negotiation_score == 40.0
     assert recommendation.overall_score == 55.0
     assert recommendation.recommendation_label == "Moderate Match"
+
+
+def test_market_and_preference_analysis_run_in_parallel(
+    listing: ListingSchema,
+    intent: PropertyIntent,
+) -> None:
+    """
+    Verify that the independent first-stage branches execute
+    concurrently.
+
+    The barrier requires both nodes to begin execution before either
+    node can continue. A sequential graph would time out.
+    """
+    barrier = threading.Barrier(2)
+
+    subgraph = PropertyAnalysisSubgraph(
+        market_agent=SlowMarketAgent(
+            barrier=barrier,
+        ),
+        preference_match_agent=SlowPreferenceMatchAgent(
+            barrier=barrier,
+        ),
+        comparable_value_agent=FakeComparableValueAgent(),
+        negotiation_agent=FakeNegotiationAgent(),
+        recommendation_agent=FakeRecommendationAgent(),
+    )
+
+    result = subgraph.run(
+        listing=listing,
+        intent=intent,
+    )
+
+    assert result["market_context"] is not None
+    assert result["preference_analysis"] is not None
+    assert result["recommendation"] is not None
+
+
+def test_comparable_and_negotiation_run_in_parallel(
+    listing: ListingSchema,
+    intent: PropertyIntent,
+) -> None:
+    """
+    Verify that comparable-value and negotiation analysis run
+    concurrently after market context becomes available.
+    """
+    barrier = threading.Barrier(2)
+
+    subgraph = PropertyAnalysisSubgraph(
+        market_agent=FakeMarketAgent(),
+        preference_match_agent=FakePreferenceMatchAgent(),
+        comparable_value_agent=ParallelComparableValueAgent(
+            barrier=barrier,
+        ),
+        negotiation_agent=ParallelNegotiationAgent(
+            barrier=barrier,
+        ),
+        recommendation_agent=FakeRecommendationAgent(),
+    )
+
+    result = subgraph.run(
+        listing=listing,
+        intent=intent,
+    )
+
+    assert result["comparable_value_analysis"] is not None
+    assert result["negotiation_analysis"] is not None
+    assert result["recommendation"] is not None
