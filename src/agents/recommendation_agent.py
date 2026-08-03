@@ -78,9 +78,9 @@ class RecommendationAgent:
         ranked = sorted(
             recommendations,
             key=lambda recommendation: (
-                recommendation.overall_score
+                -recommendation.overall_score,
+                recommendation.listing.listing_key,
             ),
-            reverse=True,
         )
 
         return ranked[:limit]
