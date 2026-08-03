@@ -19,6 +19,14 @@ from src.memory.session_memory import SessionMemory
 from src.schemas.state_schema import AgentState
 from src.search.mysql_sold_comp_repository import MySQLSoldCompRepository
 
+from src.schemas.intent_schema import PropertyIntent
+from src.schemas.listing_schema import ListingSchema
+from src.schemas.recommendation_score_schema import RecommendationScore
+
+from concurrent.futures import (
+    ThreadPoolExecutor,
+    as_completed,
+)
 
 class PropertySearchGraph:
     """
@@ -29,6 +37,8 @@ class PropertySearchGraph:
 
     SEARCH_CANDIDATE_LIMIT = 50
     RECOMMENDATION_LIMIT = 5
+
+    DEFAULT_MAX_PARALLEL_CANDIDATES = 4
 
     def __init__(
         self,
@@ -41,6 +51,10 @@ class PropertySearchGraph:
         negotiation_agent: NegotiationAgent | None = None,
         recommendation_agent: RecommendationAgent | None = None,
         explanation_agent: ExplanationAgent | None = None,
+        parallel_candidate_analysis: bool = True,
+        max_parallel_candidates: int = (
+            DEFAULT_MAX_PARALLEL_CANDIDATES
+        ),
     ) -> None:
         self.memory = (
             memory
@@ -59,6 +73,19 @@ class PropertySearchGraph:
         )
 
         self.search_agent = search_agent
+
+        if max_parallel_candidates < 1:
+            raise ValueError(
+                "max_parallel_candidates must be at least 1."
+            )
+
+        self.parallel_candidate_analysis = (
+            parallel_candidate_analysis
+        )
+
+        self.max_parallel_candidates = (
+            max_parallel_candidates
+        )
 
         self.market_agent = (
             market_agent
@@ -300,13 +327,159 @@ class PropertySearchGraph:
             "search_results": search_results,
         }
 
+    def _analyze_single_candidate(
+        self,
+        listing: ListingSchema,
+        intent: PropertyIntent,
+    ) -> RecommendationScore:
+        """
+        Analyze one candidate listing through the reusable property
+        analysis subgraph.
+        """
+        analysis_result = (
+            self.property_analysis_subgraph.run(
+                listing=listing,
+                intent=intent,
+            )
+        )
+
+        recommendation = analysis_result.get(
+            "recommendation"
+        )
+
+        if recommendation is None:
+            raise ValueError(
+                "Property analysis completed without producing "
+                "a recommendation."
+            )
+
+        return recommendation
+
+    def _analyze_candidates_sequentially(
+        self,
+        listings: list[ListingSchema],
+        intent: PropertyIntent,
+    ) -> tuple[
+        list[RecommendationScore],
+        list[dict[str, str]],
+    ]:
+        """
+        Analyze candidates sequentially.
+
+        This path is retained for benchmarking, regression testing,
+        and fallback behavior.
+        """
+        recommendations: list[
+            RecommendationScore
+        ] = []
+
+        errors: list[dict[str, str]] = []
+
+        for listing in listings:
+            try:
+                recommendation = (
+                    self._analyze_single_candidate(
+                        listing=listing,
+                        intent=intent,
+                    )
+                )
+
+                recommendations.append(
+                    recommendation
+                )
+
+            except Exception as exc:
+                errors.append(
+                    {
+                        "listing_key": (
+                            listing.listing_key
+                        ),
+                        "error": str(exc),
+                    }
+                )
+
+        return recommendations, errors
+
+    def _analyze_candidates_in_parallel(
+        self,
+        listings: list[ListingSchema],
+        intent: PropertyIntent,
+    ) -> tuple[
+        list[RecommendationScore],
+        list[dict[str, str]],
+    ]:
+        """
+        Analyze candidate listings concurrently using bounded
+        thread-based parallelism.
+
+        Individual candidate failures are isolated so successful
+        candidates can still be ranked.
+        """
+        if not listings:
+            return [], []
+
+        worker_count = min(
+            self.max_parallel_candidates,
+            len(listings),
+        )
+
+        recommendations: list[
+            RecommendationScore
+        ] = []
+
+        errors: list[dict[str, str]] = []
+
+        with ThreadPoolExecutor(
+            max_workers=worker_count,
+            thread_name_prefix=(
+                "candidate-property-analysis"
+            ),
+        ) as executor:
+            future_to_listing = {
+                executor.submit(
+                    self._analyze_single_candidate,
+                    listing,
+                    intent,
+                ): listing
+                for listing in listings
+            }
+
+            for future in as_completed(
+                future_to_listing
+            ):
+                listing = future_to_listing[
+                    future
+                ]
+
+                try:
+                    recommendation = (
+                        future.result()
+                    )
+
+                    recommendations.append(
+                        recommendation
+                    )
+
+                except Exception as exc:
+                    errors.append(
+                        {
+                            "listing_key": (
+                                listing.listing_key
+                            ),
+                            "error": str(exc),
+                        }
+                    )
+
+        return recommendations, errors
+
     def _analyze_properties(
         self,
         state: AgentState,
     ) -> dict[str, Any]:
         """
-        Run the Property Analysis Subgraph for each candidate listing,
-        then rank the resulting recommendation scores.
+        Analyze candidate listings using either bounded parallel
+        execution or the retained sequential path, then rank the
+        successful recommendation results.
         """
         intent = state["intent"]
 
@@ -315,34 +488,40 @@ class PropertySearchGraph:
             [],
         )
 
-        scored_recommendations = []
+        if self.parallel_candidate_analysis:
+            (
+                scored_recommendations,
+                analysis_errors,
+            ) = self._analyze_candidates_in_parallel(
+                listings=search_results,
+                intent=intent,
+            )
 
-        for listing in search_results:
-            analysis_result = (
-                self.property_analysis_subgraph.run(
-                    listing=listing,
+        else:
+            (
+                scored_recommendations,
+                analysis_errors,
+            ) = (
+                self._analyze_candidates_sequentially(
+                    listings=search_results,
                     intent=intent,
                 )
             )
 
-            recommendation = analysis_result.get(
-                "recommendation"
-            )
-
-            if recommendation is not None:
-                scored_recommendations.append(
-                    recommendation
-                )
-
         recommendations = (
             self.recommendation_agent.rank(
-                recommendations=scored_recommendations,
+                recommendations=(
+                    scored_recommendations
+                ),
                 limit=self.RECOMMENDATION_LIMIT,
             )
         )
 
         return {
             "recommendations": recommendations,
+            "candidate_analysis_errors": (
+                analysis_errors
+            ),
         }
 
     def _generate_explanation(

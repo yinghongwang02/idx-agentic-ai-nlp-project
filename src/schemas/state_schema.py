@@ -4,6 +4,10 @@ from src.schemas.compliance_schema import ComplianceReport
 from src.schemas.intent_schema import PropertyIntent
 from src.schemas.listing_schema import ListingSchema
 
+from src.schemas.recommendation_score_schema import (
+    RecommendationScore,
+)
+
 
 class AgentState(TypedDict, total=False):
     # Current user input
@@ -21,7 +25,11 @@ class AgentState(TypedDict, total=False):
 
     # Search pipeline
     search_results: list[ListingSchema]
-    recommendations: list[ListingSchema]
+    recommendations: list[RecommendationScore]
+
+    candidate_analysis_errors: list[
+        dict[str, str]
+    ]
 
     # Generated text
     explanation: str
