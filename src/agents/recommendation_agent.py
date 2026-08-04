@@ -1,3 +1,8 @@
+from __future__ import annotations
+
+from src.config.recommendation_config import (
+    RecommendationConfig,
+)
 from src.schemas.comparable_value_analysis_schema import (
     ComparableValueAnalysis,
 )
@@ -15,13 +20,19 @@ from src.schemas.recommendation_score_schema import (
 
 class RecommendationAgent:
     """
-    Aggregate listing-level recommendation signals
-    and rank candidate listings.
+    Aggregate listing-level recommendation signals and rank
+    candidate listings using a configurable scoring policy.
     """
 
-    PREFERENCE_WEIGHT = 0.40
-    COMPARABLE_VALUE_WEIGHT = 0.35
-    NEGOTIATION_WEIGHT = 0.25
+    def __init__(
+        self,
+        config: RecommendationConfig | None = None,
+    ) -> None:
+        self.config = (
+            config
+            if config is not None
+            else RecommendationConfig()
+        )
 
     def score_listing(
         self,
@@ -32,11 +43,11 @@ class RecommendationAgent:
     ) -> RecommendationScore:
         overall_score = (
             preference_analysis.preference_match_score
-            * self.PREFERENCE_WEIGHT
+            * self.config.preference_weight
             + comparable_value_analysis.adjusted_value_score
-            * self.COMPARABLE_VALUE_WEIGHT
+            * self.config.comparable_value_weight
             + negotiation_analysis.negotiation_score
-            * self.NEGOTIATION_WEIGHT
+            * self.config.negotiation_weight
         )
 
         overall_score = round(
@@ -75,6 +86,12 @@ class RecommendationAgent:
         recommendations: list[RecommendationScore],
         limit: int = 5,
     ) -> list[RecommendationScore]:
+        """
+        Rank recommendations deterministically.
+
+        Overall score is the primary key. Listing key is used as a
+        deterministic tie-breaker when scores are equal.
+        """
         ranked = sorted(
             recommendations,
             key=lambda recommendation: (
@@ -85,17 +102,26 @@ class RecommendationAgent:
 
         return ranked[:limit]
 
-    @staticmethod
     def _get_recommendation_label(
+        self,
         overall_score: float,
     ) -> str:
-        if overall_score >= 80:
+        if (
+            overall_score
+            >= self.config.strong_match_threshold
+        ):
             return "Strong Match"
 
-        if overall_score >= 65:
+        if (
+            overall_score
+            >= self.config.good_match_threshold
+        ):
             return "Good Match"
 
-        if overall_score >= 50:
+        if (
+            overall_score
+            >= self.config.moderate_match_threshold
+        ):
             return "Moderate Match"
 
         return "Limited Match"
@@ -106,7 +132,7 @@ class RecommendationAgent:
         comparable_value_analysis: ComparableValueAnalysis,
         negotiation_analysis: NegotiationAnalysis,
     ) -> list[str]:
-        reasons = []
+        reasons: list[str] = []
 
         reasons.extend(
             preference_analysis.signals
