@@ -1,0 +1,7 @@
+mode,run_number,elapsed_seconds,candidate_count,successful_count,error_count
+sequential,1,52.1331,50,50,0
+parallel,1,23.1237,50,50,0
+parallel,2,22.9152,50,50,0
+sequential,2,50.5957,50,50,0
+sequential,3,50.5944,50,50,0
+parallel,3,22.3566,50,50,0

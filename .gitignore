@@ -8,3 +8,11 @@ __pycache__/
 .DS_Store
 data/*.sql
 *.sql
+
+# benchmark outputs
+artifacts/benchmarks/*.csv
+
+# keep baseline benchmark
+!artifacts/
+!artifacts/benchmarks/
+!artifacts/benchmarks/candidate_parallel_baseline.csv
