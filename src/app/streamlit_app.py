@@ -132,7 +132,7 @@ if st.button("Search"):
 
     else:
         with st.spinner(
-            "Analyzing properties and market data... This may take a moment 😄"
+            "Analyzing properties and market data... 😄"
         ):
             state = (
                 st.session_state.workflow
