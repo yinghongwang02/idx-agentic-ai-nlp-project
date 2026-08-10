@@ -11,13 +11,15 @@ from typing import Any
 import mysql.connector
 import numpy as np
 from mysql.connector import MySQLConnection
-from openai import OpenAI
+
+from src.providers.embedding_base import BaseEmbeddingProvider
+from src.providers.factory import get_embedding_provider
 
 from src.config.settings import settings
 from src.embeddings.listing_text import build_listing_embedding_text
 
 
-DEFAULT_MODEL = "text-embedding-3-small"
+DEFAULT_MODEL = settings.openai_embedding_model
 DEFAULT_BATCH_SIZE = 50
 DEFAULT_LIMIT = 100
 DEFAULT_OUTPUT_DIR = Path("artifacts/embeddings")
@@ -168,57 +170,62 @@ def prepare_embedding_records(
 
 
 def generate_embeddings(
-    client: OpenAI,
+    provider: BaseEmbeddingProvider,
     texts: list[str],
-    model: str,
     batch_size: int,
 ) -> np.ndarray:
     """Generate embeddings in batches while preserving input order."""
     if not texts:
-        raise ValueError("No listing texts were provided for embedding.")
+        raise ValueError(
+            "No listing texts were provided for embedding."
+        )
 
     all_embeddings: list[list[float]] = []
+
+    total_batches = (
+        len(texts) + batch_size - 1
+    ) // batch_size
 
     for start in range(0, len(texts), batch_size):
         batch = texts[start : start + batch_size]
         batch_number = start // batch_size + 1
-        total_batches = (len(texts) + batch_size - 1) // batch_size
 
         print(
             f"Embedding batch {batch_number}/{total_batches} "
             f"({len(batch)} listings)..."
         )
 
-        response = client.embeddings.create(
-            model=model,
-            input=batch,
-            encoding_format="float",
-        )
-
-        ordered_data = sorted(response.data, key=lambda item: item.index)
-        batch_embeddings = [item.embedding for item in ordered_data]
+        batch_embeddings = provider.embed_documents(batch)
 
         if len(batch_embeddings) != len(batch):
             raise RuntimeError(
-                "Embedding response count does not match input batch count."
+                "Embedding response count does not match "
+                "input batch count."
             )
 
         all_embeddings.extend(batch_embeddings)
 
-    embeddings = np.asarray(all_embeddings, dtype=np.float32)
+    embeddings = np.asarray(
+        all_embeddings,
+        dtype=np.float32,
+    )
 
     if embeddings.ndim != 2:
         raise RuntimeError(
-            f"Expected a 2D embedding matrix, received shape {embeddings.shape}."
+            "Expected a 2D embedding matrix, "
+            f"received shape {embeddings.shape}."
         )
 
     if embeddings.shape[0] != len(texts):
         raise RuntimeError(
-            "Final embedding row count does not match listing text count."
+            "Final embedding row count does not match "
+            "listing text count."
         )
 
     if not np.isfinite(embeddings).all():
-        raise RuntimeError("Embedding matrix contains NaN or infinite values.")
+        raise RuntimeError(
+            "Embedding matrix contains NaN or infinite values."
+        )
 
     return embeddings
 
@@ -331,7 +338,10 @@ def save_artifacts(
 def main() -> None:
     args = parse_args()
 
-    client = OpenAI(api_key=settings.openai_api_key)
+    provider = get_embedding_provider(
+        model=args.model,
+    )
+
     connection: MySQLConnection | None = None
 
     try:
@@ -363,9 +373,8 @@ def main() -> None:
         print("-" * 80)
 
         embeddings = generate_embeddings(
-            client=client,
+            provider=provider,
             texts=texts,
-            model=args.model,
             batch_size=args.batch_size,
         )
 

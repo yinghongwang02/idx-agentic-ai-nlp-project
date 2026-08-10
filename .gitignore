@@ -1,18 +1,29 @@
+# Python environment
 .venv/
 __pycache__/
 *.pyc
+
+# Environment variables
 .env
+.env.*
+
+# Development caches
 .ipynb_checkpoints/
 .pytest_cache/
 .ruff_cache/
+
+# OS files
 .DS_Store
+
+# Local SQL / data files
 data/*.sql
 *.sql
 
-# benchmark outputs
+# Generated embedding artifacts
+artifacts/embeddings/
+
+# Benchmark outputs
 artifacts/benchmarks/*.csv
 
-# keep baseline benchmark
-!artifacts/
-!artifacts/benchmarks/
+# Keep selected benchmark artifact
 !artifacts/benchmarks/candidate_parallel_baseline.csv

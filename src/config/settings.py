@@ -28,5 +28,14 @@ class Settings:
     # Search configuration
     search_backend: str = os.getenv("SEARCH_BACKEND", "mysql")
 
+    # Embedding configuration
+    embedding_provider: str = os.getenv(
+        "EMBEDDING_PROVIDER",
+        "openai",
+    )
+    openai_embedding_model: str = os.getenv(
+        "OPENAI_EMBEDDING_MODEL",
+        "text-embedding-3-small",
+    )
 
 settings = Settings()
