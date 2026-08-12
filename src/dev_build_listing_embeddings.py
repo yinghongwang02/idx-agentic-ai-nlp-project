@@ -18,6 +18,8 @@ from src.providers.factory import get_embedding_provider
 from src.config.settings import settings
 from src.embeddings.listing_text import build_listing_embedding_text
 
+CHECKPOINT_DIRNAME = "checkpoints"
+CHECKPOINT_STATE_FILENAME = "checkpoint_state.json"
 
 DEFAULT_MODEL = settings.openai_embedding_model
 DEFAULT_BATCH_SIZE = 50
@@ -70,6 +72,24 @@ def parse_args() -> argparse.Namespace:
         help="Directory used to store embedding artifacts.",
     )
 
+    parser.add_argument(
+        "--checkpoint",
+        action="store_true",
+        help=(
+            "Persist each embedding batch as a checkpoint "
+            "before final consolidation."
+        ),
+    )
+
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Resume from existing batch checkpoints "
+            "in the output directory."
+        ),
+    )
+
     args = parser.parse_args()
 
     if args.limit <= 0:
@@ -77,6 +97,11 @@ def parse_args() -> argparse.Namespace:
 
     if args.batch_size <= 0:
         parser.error("--batch-size must be greater than zero.")
+
+    if args.resume and not args.checkpoint:
+        parser.error(
+            "--resume requires --checkpoint."
+        )
 
     return args
 
@@ -334,6 +359,493 @@ def save_artifacts(
     print(f"  Shape:      {embeddings.shape}")
     print(f"  Dtype:      {embeddings.dtype}")
 
+def get_checkpoint_dir(
+    output_dir: Path,
+) -> Path:
+    return output_dir / CHECKPOINT_DIRNAME
+
+
+def get_checkpoint_state_path(
+    output_dir: Path,
+) -> Path:
+    return output_dir / CHECKPOINT_STATE_FILENAME
+
+
+def load_checkpoint_state(
+    output_dir: Path,
+) -> dict[str, Any]:
+    state_path = get_checkpoint_state_path(
+        output_dir
+    )
+
+    if not state_path.exists():
+        return {
+            "completed_batches": 0,
+            "completed_listing_ids": [],
+        }
+
+    with state_path.open(
+        "r",
+        encoding="utf-8",
+    ) as file:
+        state = json.load(file)
+
+    return state
+
+
+def save_checkpoint_state(
+    output_dir: Path,
+    state: dict[str, Any],
+) -> None:
+    state_path = get_checkpoint_state_path(
+        output_dir
+    )
+
+    temporary_path = state_path.with_suffix(
+        ".json.tmp"
+    )
+
+    with temporary_path.open(
+        "w",
+        encoding="utf-8",
+    ) as file:
+        json.dump(
+            state,
+            file,
+            indent=2,
+        )
+
+    os.replace(
+        temporary_path,
+        state_path,
+    )
+
+def write_batch_checkpoint(
+    output_dir: Path,
+    batch_number: int,
+    embeddings: np.ndarray,
+    metadata: list[dict[str, Any]],
+) -> None:
+    checkpoint_dir = get_checkpoint_dir(
+        output_dir
+    )
+
+    checkpoint_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    embedding_path = (
+        checkpoint_dir
+        / f"embeddings_{batch_number:06d}.npy"
+    )
+
+    metadata_path = (
+        checkpoint_dir
+        / f"metadata_{batch_number:06d}.jsonl"
+    )
+
+    temporary_embedding_path = (
+        checkpoint_dir
+        / f"embeddings_{batch_number:06d}.tmp.npy"
+    )
+
+    np.save(
+        temporary_embedding_path,
+        embeddings,
+    )
+
+    os.replace(
+        temporary_embedding_path,
+        embedding_path,
+    )
+
+    temporary_metadata_path = (
+        metadata_path.with_suffix(
+            ".jsonl.tmp"
+        )
+    )
+
+    with temporary_metadata_path.open(
+        "w",
+        encoding="utf-8",
+    ) as file:
+        for record in metadata:
+            safe_record = {
+                key: json_safe(value)
+                for key, value in record.items()
+            }
+
+            file.write(
+                json.dumps(
+                    safe_record,
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+
+    os.replace(
+        temporary_metadata_path,
+        metadata_path,
+    )
+
+def consolidate_checkpoints(
+    output_dir: Path,
+    model: str,
+    batch_size: int,
+) -> None:
+    checkpoint_dir = get_checkpoint_dir(
+        output_dir
+    )
+
+    embedding_files = sorted(
+        checkpoint_dir.glob(
+            "embeddings_*.npy"
+        )
+    )
+
+    metadata_files = sorted(
+        checkpoint_dir.glob(
+            "metadata_*.jsonl"
+        )
+    )
+
+    if not embedding_files:
+        raise RuntimeError(
+            "No embedding checkpoints were found."
+        )
+
+    if len(embedding_files) != len(
+        metadata_files
+    ):
+        raise RuntimeError(
+            "Embedding checkpoint count does not "
+            "match metadata checkpoint count."
+        )
+
+    embedding_parts: list[np.ndarray] = []
+    metadata: list[dict[str, Any]] = []
+
+    for embedding_path, metadata_path in zip(
+        embedding_files,
+        metadata_files,
+    ):
+        batch_embeddings = np.load(
+            embedding_path
+        )
+
+        if batch_embeddings.ndim != 2:
+            raise RuntimeError(
+                f"Invalid checkpoint shape: "
+                f"{embedding_path}"
+            )
+
+        embedding_parts.append(
+            batch_embeddings
+        )
+
+        with metadata_path.open(
+            "r",
+            encoding="utf-8",
+        ) as file:
+            for line in file:
+                if not line.strip():
+                    continue
+
+                metadata.append(
+                    json.loads(line)
+                )
+
+    embeddings = np.concatenate(
+        embedding_parts,
+        axis=0,
+    ).astype(
+        np.float32,
+        copy=False,
+    )
+
+    if embeddings.shape[0] != len(
+        metadata
+    ):
+        raise RuntimeError(
+            "Consolidated embedding count does "
+            "not match metadata count."
+        )
+
+    listing_ids = [
+        str(record["listing_id"])
+        for record in metadata
+        if record.get("listing_id") is not None
+    ]
+
+    if len(listing_ids) != len(
+        set(listing_ids)
+    ):
+        raise RuntimeError(
+            "Duplicate listing IDs detected across "
+            "embedding checkpoints."
+        )
+
+    # Reassign final global embedding_row values.
+    for row_index, record in enumerate(
+        metadata
+    ):
+        record["embedding_row"] = (
+            row_index
+        )
+
+    save_artifacts(
+        output_dir=output_dir,
+        embeddings=embeddings,
+        metadata=metadata,
+        model=model,
+        batch_size=batch_size,
+    )
+
+def generate_embeddings_with_checkpoints(
+    provider: BaseEmbeddingProvider,
+    texts: list[str],
+    metadata: list[dict[str, Any]],
+    output_dir: Path,
+    batch_size: int,
+    resume: bool,
+) -> None:
+    if not texts:
+        raise ValueError(
+            "No listing texts were provided."
+        )
+
+    if len(texts) != len(metadata):
+        raise RuntimeError(
+            "Text and metadata counts do not match."
+        )
+
+    output_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    checkpoint_dir = get_checkpoint_dir(
+        output_dir
+    )
+
+    if (
+        checkpoint_dir.exists()
+        and any(checkpoint_dir.iterdir())
+        and not resume
+    ):
+        raise RuntimeError(
+            "Checkpoint directory already contains files. "
+            "Use --resume to continue or choose a new "
+            "--output-dir."
+        )
+
+    state_path = get_checkpoint_state_path(
+        output_dir
+    )
+
+    if resume and not state_path.exists():
+        raise RuntimeError(
+            "Cannot resume because checkpoint_state.json "
+            "does not exist."
+        )
+
+    state = (
+        load_checkpoint_state(
+            output_dir
+        )
+        if resume
+        else {
+            "completed_batches": 0,
+            "completed_listing_ids": [],
+        }
+    )
+
+    completed_listing_ids = {
+        str(listing_id)
+        for listing_id in state.get(
+            "completed_listing_ids",
+            []
+        )
+    }
+
+    pending_records: list[
+        tuple[str, dict[str, Any]]
+    ] = []
+
+    for text, record in zip(
+        texts,
+        metadata,
+    ):
+        listing_id = record.get(
+            "listing_id"
+        )
+
+        if listing_id is None:
+            continue
+
+        normalized_id = str(
+            listing_id
+        )
+
+        if normalized_id in completed_listing_ids:
+            continue
+
+        pending_records.append(
+            (
+                text,
+                record,
+            )
+        )
+
+    print(
+        f"Already completed listings: "
+        f"{len(completed_listing_ids)}"
+    )
+
+    print(
+        f"Remaining listings: "
+        f"{len(pending_records)}"
+    )
+
+    if not pending_records:
+        print(
+            "No remaining listings to embed."
+        )
+        return
+
+    completed_batches = int(
+        state.get(
+            "completed_batches",
+            0,
+        )
+    )
+
+    total_pending_batches = (
+        len(pending_records)
+        + batch_size
+        - 1
+    ) // batch_size
+
+    for start in range(
+        0,
+        len(pending_records),
+        batch_size,
+    ):
+        batch_records = (
+            pending_records[
+                start : start + batch_size
+            ]
+        )
+
+        batch_texts = [
+            text
+            for text, _ in batch_records
+        ]
+
+        batch_metadata = [
+            record
+            for _, record in batch_records
+        ]
+
+        checkpoint_batch_number = (
+            completed_batches + 1
+        )
+
+        progress_number = (
+            start // batch_size + 1
+        )
+
+        print(
+            f"Embedding batch "
+            f"{progress_number}/"
+            f"{total_pending_batches} "
+            f"({len(batch_texts)} listings)..."
+        )
+
+        raw_embeddings = (
+            provider.embed_documents(
+                batch_texts
+            )
+        )
+
+        batch_embeddings = np.asarray(
+            raw_embeddings,
+            dtype=np.float32,
+        )
+
+        if batch_embeddings.ndim != 2:
+            raise RuntimeError(
+                "Expected a 2D batch embedding matrix."
+            )
+
+        if (
+            batch_embeddings.shape[0]
+            != len(batch_metadata)
+        ):
+            raise RuntimeError(
+                "Embedding response count does "
+                "not match batch metadata count."
+            )
+
+        if not np.isfinite(
+            batch_embeddings
+        ).all():
+            raise RuntimeError(
+                "Batch embeddings contain NaN "
+                "or infinite values."
+            )
+
+        write_batch_checkpoint(
+            output_dir=output_dir,
+            batch_number=(
+                checkpoint_batch_number
+            ),
+            embeddings=batch_embeddings,
+            metadata=batch_metadata,
+        )
+
+        batch_listing_ids = [
+            str(record["listing_id"])
+            for record in batch_metadata
+            if record.get(
+                "listing_id"
+            )
+            is not None
+        ]
+
+        completed_listing_ids.update(
+            batch_listing_ids
+        )
+
+        completed_batches += 1
+
+        state = {
+            "completed_batches": (
+                completed_batches
+            ),
+            "completed_listing_ids": sorted(
+                completed_listing_ids
+            ),
+            "updated_at_utc": (
+                datetime.now(
+                    timezone.utc
+                ).isoformat()
+            ),
+        }
+
+        # Write state only AFTER the batch files
+        # have been safely persisted.
+        save_checkpoint_state(
+            output_dir,
+            state,
+        )
+
+        print(
+            f"Checkpoint saved: "
+            f"{len(completed_listing_ids)} "
+            f"listings completed."
+        )
 
 def main() -> None:
     args = parse_args()
@@ -372,19 +884,38 @@ def main() -> None:
         print(texts[0])
         print("-" * 80)
 
-        embeddings = generate_embeddings(
-            provider=provider,
-            texts=texts,
-            batch_size=args.batch_size,
-        )
 
-        save_artifacts(
-            output_dir=args.output_dir,
-            embeddings=embeddings,
-            metadata=metadata,
-            model=args.model,
-            batch_size=args.batch_size,
-        )
+        if args.checkpoint:
+            generate_embeddings_with_checkpoints(
+                provider=provider,
+                texts=texts,
+                metadata=metadata,
+                output_dir=args.output_dir,
+                batch_size=args.batch_size,
+                resume=args.resume,
+            )
+
+            consolidate_checkpoints(
+                output_dir=args.output_dir,
+                model=args.model,
+                batch_size=args.batch_size,
+            )
+
+        else:
+            embeddings = generate_embeddings(
+                provider=provider,
+                texts=texts,
+                batch_size=args.batch_size,
+            )
+
+            save_artifacts(
+                output_dir=args.output_dir,
+                embeddings=embeddings,
+                metadata=metadata,
+                model=args.model,
+                batch_size=args.batch_size,
+            )
+
 
     finally:
         if connection is not None and connection.is_connected():
