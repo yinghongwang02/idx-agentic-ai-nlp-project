@@ -27,3 +27,4 @@ artifacts/benchmarks/*.csv
 
 # Keep selected benchmark artifact
 !artifacts/benchmarks/candidate_parallel_baseline.csv
+!artifacts/benchmarks/retrieval_comparison_full.csv

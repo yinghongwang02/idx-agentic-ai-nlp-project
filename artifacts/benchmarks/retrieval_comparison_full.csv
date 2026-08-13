@@ -1,0 +1,13 @@
+case,mode,result_count,latency_ms,hard_constraint_pass_rate,preference_term_hit_rate,avg_semantic_score
+lancaster_pool_open_layout,structured,5,24.8,1.0,0.4,
+lancaster_pool_open_layout,keyword,5,10.14,1.0,1.0,
+lancaster_pool_open_layout,semantic,5,1700.9,0.0,1.0,0.4949
+lancaster_pool_open_layout,hybrid,5,562.12,1.0,1.0,0.3993
+san_jose_bright_modern_condo,structured,5,17.64,1.0,0.6,
+san_jose_bright_modern_condo,keyword,5,14.99,1.0,1.0,
+san_jose_bright_modern_condo,semantic,5,335.4,0.0,1.0,0.4436
+san_jose_bright_modern_condo,hybrid,5,340.02,1.0,1.0,0.3538
+los_angeles_modern_open_layout,structured,5,139.91,1.0,0.2,
+los_angeles_modern_open_layout,keyword,5,37.85,1.0,1.0,
+los_angeles_modern_open_layout,semantic,5,586.55,0.0,1.0,0.5178
+los_angeles_modern_open_layout,hybrid,5,734.39,1.0,0.8,0.4025
