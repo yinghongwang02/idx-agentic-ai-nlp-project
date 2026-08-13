@@ -3,8 +3,18 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from src.agents.comparable_value_agent import (
+    ComparableValueAgent,
+)
+from src.agents.market_agent import MarketAgent
+from src.recommendation.hybrid_recommendation import (
+    HybridRecommendationService,
+)
 from src.recommendation.hybrid_similarity import (
     SimilarListingRetriever,
+)
+from src.search.mysql_sold_comp_repository import (
+    MySQLSoldCompRepository,
 )
 
 
@@ -66,13 +76,35 @@ def main() -> None:
         metadata_path=args.metadata,
     )
 
-    results = retriever.recommend_similar(
+    sold_comp_repository = (
+        MySQLSoldCompRepository()
+    )
+
+    market_agent = MarketAgent(
+        repository=sold_comp_repository,
+    )
+
+    comparable_value_agent = (
+        ComparableValueAgent()
+    )
+
+    service = HybridRecommendationService(
+        similarity_retriever=retriever,
+        market_agent=market_agent,
+        comparable_value_agent=(
+            comparable_value_agent
+        ),
+    )
+
+    results = service.recommend(
         target_listing_id=args.listing_id,
         top_k=args.top_k,
     )
 
     print("=" * 100)
-    print("HYBRID SIMILAR-LISTING RECOMMENDATION")
+    print(
+        "HYBRID SIMILAR-LISTING RECOMMENDATION"
+    )
     print("=" * 100)
 
     print(
@@ -93,18 +125,22 @@ def main() -> None:
 
         print()
         print(f"Rank {rank}")
+
         print(
             f"Hybrid similarity: "
             f"{result['hybrid_similarity_score']:.2f}"
         )
+
         print(
             f"Structured similarity: "
             f"{result['structured_similarity_score']:.2f}/60"
         )
+
         print(
             f"Semantic similarity: "
             f"{result['semantic_similarity']:.4f}"
         )
+
         print(
             f"Semantic contribution: "
             f"{result['semantic_similarity_score']:.2f}/40"
@@ -114,26 +150,32 @@ def main() -> None:
             f"Listing ID: "
             f"{listing.listing_key}"
         )
+
         print(
             f"Address: "
             f"{listing.unparsed_address}"
         )
+
         print(
             f"City: "
             f"{listing.city}"
         )
+
         print(
             f"Price: "
             f"${listing.list_price:,.0f}"
         )
+
         print(
             f"Bedrooms: "
             f"{listing.bedrooms_total}"
         )
+
         print(
             f"Bathrooms: "
             f"{listing.bathrooms_total_integer}"
         )
+
         print(
             f"Living area: "
             f"{listing.living_area}"
@@ -148,6 +190,95 @@ def main() -> None:
             f"Text: "
             f"{remarks[:400]}"
         )
+
+        validation = result[
+            "comp_validation"
+        ]
+
+        print()
+        print("Sold-Comp Validation")
+
+        print(
+            f"Status: "
+            f"{validation['status']}"
+        )
+
+        if (
+            validation["status"]
+            == "validated"
+        ):
+            print(
+                f"Match level: "
+                f"{validation['match_level']}"
+            )
+
+            print(
+                f"Comparable sales: "
+                f"{validation['comp_count']}"
+            )
+
+            asking_ppsf = validation[
+                "asking_price_per_sqft"
+            ]
+
+            comparable_ppsf = validation[
+                "comparable_median_price_per_sqft"
+            ]
+
+            ratio = validation[
+                "price_per_sqft_ratio"
+            ]
+
+            median_close = validation[
+                "comparable_median_close_price"
+            ]
+
+            if asking_ppsf is not None:
+                print(
+                    f"Asking PPSF: "
+                    f"${asking_ppsf:,.2f}"
+                )
+
+            if comparable_ppsf is not None:
+                print(
+                    f"Comparable median PPSF: "
+                    f"${comparable_ppsf:,.2f}"
+                )
+
+            if ratio is not None:
+                print(
+                    f"Asking / comp PPSF ratio: "
+                    f"{ratio:.3f}"
+                )
+
+            if median_close is not None:
+                print(
+                    f"Comparable median close price: "
+                    f"${median_close:,.0f}"
+                )
+
+            print(
+                f"Comparable value score: "
+                f"{validation['comparable_value_score']:.2f}"
+            )
+
+            print(
+                f"Comparable evidence quality: "
+                f"{validation['comparable_quality_score']:.2f}"
+            )
+
+            for signal in validation[
+                "signals"
+            ]:
+                print(
+                    f"- {signal}"
+                )
+
+        else:
+            print(
+                "- Sold-comparable validation "
+                "was unavailable."
+            )
 
         print("-" * 100)
 
