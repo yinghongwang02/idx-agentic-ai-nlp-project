@@ -15,7 +15,7 @@ class Settings:
     # LLM configuration
     llm_provider: str = os.getenv("LLM_PROVIDER", "openai")
     openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
-    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
     # MySQL configuration
     mysql_host: str = os.getenv("MYSQL_HOST", "localhost")
