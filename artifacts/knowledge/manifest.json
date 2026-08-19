@@ -1,8 +1,8 @@
 {
-  "created_at_utc": "2026-08-19T22:30:07.860032+00:00",
+  "created_at_utc": "2026-08-19T23:07:13.212467+00:00",
   "embedding_model": "text-embedding-3-small",
   "document_count": 4,
-  "chunk_count": 113,
+  "chunk_count": 124,
   "embedding_dimension": 1536,
   "embedding_dtype": "float32",
   "batch_size": 50,

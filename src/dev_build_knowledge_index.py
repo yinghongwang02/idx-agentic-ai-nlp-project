@@ -24,6 +24,12 @@ from src.knowledge.loader import (
     load_pdf_document,
 )
 
+from src.embeddings.knowledge_chunker import (
+    KnowledgeChunk,
+    chunk_markdown_by_sections,
+    chunk_text,
+)
+
 DEFAULT_MODEL = settings.openai_embedding_model
 DEFAULT_BATCH_SIZE = 50
 DEFAULT_CHUNK_SIZE = 600
@@ -130,6 +136,7 @@ def parse_args() -> argparse.Namespace:
 
     return args
 
+
 def load_knowledge_documents(
     mapping_path: Path,
     terminology_path: Path,
@@ -160,23 +167,36 @@ def load_knowledge_documents(
 
     return documents
 
+
 def prepare_knowledge_chunks(
     documents: list[KnowledgeDocument],
     chunk_size: int,
     overlap: int,
 ) -> list[KnowledgeChunk]:
-    """Split all knowledge documents into aligned chunks."""
+    """Split knowledge documents into aligned chunks."""
 
     chunks: list[KnowledgeChunk] = []
 
     for document in documents:
-        document_chunks = chunk_text(
-            text=document.content,
-            source=document.source,
-            section=None,
-            chunk_size=chunk_size,
-            overlap=overlap,
-        )
+        if document.source.lower().endswith(
+            ".md"
+        ):
+            document_chunks = (
+                chunk_markdown_by_sections(
+                    text=document.content,
+                    source=document.source,
+                    chunk_size=chunk_size,
+                    overlap=overlap,
+                )
+            )
+        else:
+            document_chunks = chunk_text(
+                text=document.content,
+                source=document.source,
+                section=None,
+                chunk_size=chunk_size,
+                overlap=overlap,
+            )
 
         if not document_chunks:
             print(
@@ -185,7 +205,9 @@ def prepare_knowledge_chunks(
             )
             continue
 
-        chunks.extend(document_chunks)
+        chunks.extend(
+            document_chunks
+        )
 
         print(
             f"Prepared {len(document_chunks)} chunks "
@@ -198,7 +220,6 @@ def prepare_knowledge_chunks(
         )
 
     return chunks
-
 
 def generate_embeddings(
     provider: BaseEmbeddingProvider,
