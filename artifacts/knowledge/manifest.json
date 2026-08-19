@@ -1,8 +1,8 @@
 {
-  "created_at_utc": "2026-08-19T03:22:15.294828+00:00",
+  "created_at_utc": "2026-08-19T22:30:07.860032+00:00",
   "embedding_model": "text-embedding-3-small",
-  "document_count": 2,
-  "chunk_count": 86,
+  "document_count": 4,
+  "chunk_count": 113,
   "embedding_dimension": 1536,
   "embedding_dtype": "float32",
   "batch_size": 50,
@@ -10,6 +10,8 @@
   "overlap": 100,
   "sources": [
     "mls_field_mapping.md",
+    "real_estate_terminology.md",
+    "real_estate_law.md",
     "handbook.pdf"
   ],
   "embeddings_file": "knowledge_embeddings.npy",

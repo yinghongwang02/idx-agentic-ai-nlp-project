@@ -31,6 +31,8 @@ DEFAULT_OVERLAP = 100
 
 DEFAULT_MAPPING_PATH = Path("docs/mls_field_mapping.md")
 DEFAULT_HANDBOOK_PATH = Path("data/knowledge/handbook.pdf")
+DEFAULT_TERMINOLOGY_PATH = Path("docs/real_estate_terminology.md")
+DEFAULT_LAW_PATH = Path("docs/real_estate_law.md")
 DEFAULT_OUTPUT_DIR = Path("artifacts/knowledge")
 
 
@@ -47,6 +49,26 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_MAPPING_PATH,
         help="Path to the project-maintained MLS field mapping.",
+    )
+
+    parser.add_argument(
+        "--terminology-path",
+        type=Path,
+        default=DEFAULT_TERMINOLOGY_PATH,
+        help=(
+            "Path to the source-backed "
+            "real estate terminology reference."
+        ),
+    )
+
+    parser.add_argument(
+        "--law-path",
+        type=Path,
+        default=DEFAULT_LAW_PATH,
+        help=(
+            "Path to the California real estate "
+            "law and disclosure reference."
+        ),
     )
 
     parser.add_argument(
@@ -108,16 +130,27 @@ def parse_args() -> argparse.Namespace:
 
     return args
 
-
 def load_knowledge_documents(
     mapping_path: Path,
+    terminology_path: Path,
+    law_path: Path,
     handbook_path: Path,
 ) -> list[KnowledgeDocument]:
-    """Load the real knowledge sources used by the Week 8 RAG system."""
+    """Load the knowledge sources used by the Week 8 RAG system."""
 
     documents = [
-        load_markdown_document(mapping_path),
-        load_pdf_document(handbook_path),
+        load_markdown_document(
+            mapping_path
+        ),
+        load_markdown_document(
+            terminology_path
+        ),
+        load_markdown_document(
+            law_path
+        ),
+        load_pdf_document(
+            handbook_path
+        ),
     ]
 
     if not documents:
@@ -126,7 +159,6 @@ def load_knowledge_documents(
         )
 
     return documents
-
 
 def prepare_knowledge_chunks(
     documents: list[KnowledgeDocument],
@@ -466,6 +498,8 @@ def main() -> None:
 
     documents = load_knowledge_documents(
         mapping_path=args.mapping_path,
+        terminology_path=args.terminology_path,
+        law_path=args.law_path,
         handbook_path=args.handbook_path,
     )
 
