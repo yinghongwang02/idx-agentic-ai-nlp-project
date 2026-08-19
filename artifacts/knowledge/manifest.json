@@ -1,0 +1,19 @@
+{
+  "created_at_utc": "2026-08-19T03:22:15.294828+00:00",
+  "embedding_model": "text-embedding-3-small",
+  "document_count": 2,
+  "chunk_count": 86,
+  "embedding_dimension": 1536,
+  "embedding_dtype": "float32",
+  "batch_size": 50,
+  "chunk_size": 600,
+  "overlap": 100,
+  "sources": [
+    "mls_field_mapping.md",
+    "handbook.pdf"
+  ],
+  "embeddings_file": "knowledge_embeddings.npy",
+  "metadata_file": "knowledge_metadata.jsonl",
+  "faiss_index_file": "knowledge.faiss",
+  "metadata_alignment": "metadata embedding_row equals the corresponding row in knowledge_embeddings.npy and FAISS index"
+}

@@ -13,3 +13,4 @@ streamlit==1.58.0
 mysql-connector-python==9.7.0
 python-dateutil==2.9.0.post0
 faiss-cpu==1.15.0
+pypdf==6.16.1
