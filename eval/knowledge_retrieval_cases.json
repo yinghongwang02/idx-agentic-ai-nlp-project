@@ -1,0 +1,225 @@
+[
+  {
+    "id": "dom_definition",
+    "question": "What does DOM mean in real estate?",
+    "expected_source": "real_estate_terminology.md",
+    "expected_section": "DOM — Days on Market",
+    "expected_terms": [
+      "Days on Market"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "escrow_definition",
+    "question": "What is escrow in a real estate transaction?",
+    "expected_source": "real_estate_terminology.md",
+    "expected_section": "Escrow",
+    "expected_terms": [
+      "neutral",
+      "third party",
+      "escrow agent"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "comps_definition",
+    "question": "What are comps in real estate?",
+    "expected_source": "real_estate_terminology.md",
+    "expected_section": "Comparable Sales — Comps",
+    "expected_terms": [
+      "comparable sales",
+      "subject property"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "cap_rate_formula",
+    "question": "How is cap rate calculated?",
+    "expected_source": "real_estate_terminology.md",
+    "expected_section": "Capitalization Rate — Cap Rate",
+    "expected_terms": [
+      "NOI",
+      "Property Value",
+      "R = I / V"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "list_to_close_ratio",
+    "question": "What is a list-to-close price ratio?",
+    "expected_source": "real_estate_terminology.md",
+    "expected_section": "List-to-Close Price Ratio",
+    "expected_terms": [
+      "Sale Price",
+      "List Price"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "tds_definition",
+    "question": "What is a Transfer Disclosure Statement?",
+    "expected_source": "real_estate_law.md",
+    "expected_section": "Transfer Disclosure Statement — TDS",
+    "expected_terms": [
+      "seller",
+      "material defects"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "material_facts",
+    "question": "Does completing a TDS eliminate other disclosure obligations?",
+    "expected_source": "real_estate_law.md",
+    "expected_section": "Material Facts Affecting Property Value or Desirability",
+    "expected_terms": [
+      "material facts",
+      "value",
+      "desirability"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "nhds_hazards",
+    "question": "What hazards are covered by California's NHDS?",
+    "expected_source": "real_estate_law.md",
+    "expected_section": "Natural Hazard Disclosure Statement — NHDS",
+    "expected_terms": [
+      "Flood",
+      "Fire",
+      "Earthquake",
+      "Seismic"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "dual_agency",
+    "question": "Does California allow dual agency?",
+    "expected_source": "real_estate_law.md",
+    "expected_section": "Dual Agency",
+    "expected_terms": [
+      "knowledge",
+      "consent"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "listing_price_mapping",
+    "question": "Which MLS field maps to the current listing price?",
+    "expected_source": "mls_field_mapping.md",
+    "expected_section": "Pricing",
+    "expected_terms": [
+      "L_SystemPrice",
+      "ListPrice"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "bedroom_mapping",
+    "question": "Which MLS field maps to bedroom count?",
+    "expected_source": "mls_field_mapping.md",
+    "expected_section": "Property Attributes",
+    "expected_terms": [
+      "L_Keyword2",
+      "BedroomsTotal"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "bathroom_mapping",
+    "question": "Which MLS field corresponds to BathroomsTotalInteger?",
+    "expected_source": "mls_field_mapping.md",
+    "expected_section": "Property Attributes",
+    "expected_terms": [
+      "LM_Dec_3"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "living_area_mapping",
+    "question": "Which MLS field maps to LivingArea?",
+    "expected_source": "mls_field_mapping.md",
+    "expected_section": "Property Attributes",
+    "expected_terms": [
+      "LM_Int2_3",
+      "LivingArea"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "city_mapping",
+    "question": "Which MLS field stores city information?",
+    "expected_source": "mls_field_mapping.md",
+    "expected_section": "Search Layer Convention",
+    "expected_terms": [
+      "L_City"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "sold_fields",
+    "question": "What core fields are available in california_sold for comparable-sale analysis?",
+    "expected_source": "mls_field_mapping.md",
+    "expected_section": "Sold Comparable Fields",
+    "expected_terms": [
+      "ListingKey",
+      "ListPrice",
+      "ClosePrice",
+      "CloseDate",
+      "DaysOnMarket"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "sold_dom_field",
+    "question": "Which field stores days on market in california_sold?",
+    "expected_source": "mls_field_mapping.md",
+    "expected_section": "Sold Comparable Fields",
+    "expected_terms": [
+      "DaysOnMarket"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "cross_document_list_to_close",
+    "question": "Which california_sold fields would you use to calculate a list-to-close price ratio?",
+    "expected_sources": [
+      "real_estate_terminology.md",
+      "mls_field_mapping.md"
+    ],
+    "expected_terms": [
+      "ListPrice",
+      "ClosePrice",
+      "Sale Price",
+      "List Price"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "cross_document_dom",
+    "question": "What does DOM mean, and which california_sold field stores it?",
+    "expected_sources": [
+      "real_estate_terminology.md",
+      "mls_field_mapping.md"
+    ],
+    "expected_terms": [
+      "Days on Market",
+      "DaysOnMarket"
+    ],
+    "answerable": true
+  },
+  {
+    "id": "unsupported_tax_rate",
+    "question": "What is the property tax rate for every California county?",
+    "answerable": false
+  },
+  {
+    "id": "unsupported_mortgage_rate",
+    "question": "What is the current average mortgage rate in California?",
+    "answerable": false
+  },
+  {
+    "id": "unsupported_pmi",
+    "question": "What is PMI?",
+    "answerable": false
+  }
+]

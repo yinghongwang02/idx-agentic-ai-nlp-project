@@ -59,6 +59,10 @@ def main() -> None:
                 f"{result['source']}"
             )
             print(
+                f"Section: "
+                f"{result.get('section')}"
+            )
+            print(
                 f"Chunk:  "
                 f"{result['chunk_id']}"
             )
