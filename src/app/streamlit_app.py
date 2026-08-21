@@ -2,8 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import json
+import os
+
+import numpy as np
 
 import streamlit as st
+from openai import OpenAI
 
 from src.agents.comparable_value_agent import (
     ComparableValueAgent,
@@ -95,6 +100,241 @@ def create_hybrid_recommendation_service(
 
 
 # =====================================================================
+# Week 8 knowledge-document RAG
+# =====================================================================
+
+
+KNOWLEDGE_EMBEDDINGS_CANDIDATES = [
+    Path("artifacts/knowledge/knowledge_embeddings.npy"),
+    Path("artifacts/knowledge/embeddings.npy"),
+    Path("artifacts/knowledge_rag/knowledge_embeddings.npy"),
+    Path("artifacts/knowledge_rag/embeddings.npy"),
+]
+
+KNOWLEDGE_METADATA_CANDIDATES = [
+    Path("artifacts/knowledge/knowledge_metadata.jsonl"),
+    Path("artifacts/knowledge/metadata.jsonl"),
+    Path("artifacts/knowledge/chunks.jsonl"),
+    Path("artifacts/knowledge_rag/knowledge_metadata.jsonl"),
+    Path("artifacts/knowledge_rag/metadata.jsonl"),
+    Path("artifacts/knowledge_rag/chunks.jsonl"),
+]
+
+
+def _find_knowledge_artifact(
+    candidates: list[Path],
+    suffix: str,
+) -> Path:
+    """Locate the Week 8 knowledge-index artifact without hard-coding one layout."""
+    for path in candidates:
+        if path.exists():
+            return path
+
+    artifacts_root = Path("artifacts")
+    if artifacts_root.exists():
+        matches = [
+            path
+            for path in artifacts_root.rglob(f"*{suffix}")
+            if "knowledge" in str(path).lower()
+        ]
+        if matches:
+            return sorted(matches)[0]
+
+    raise FileNotFoundError(
+        "Could not locate the Week 8 knowledge-index artifact. "
+        "Expected a knowledge-related file under artifacts/."
+    )
+
+
+def _chunk_text(record: dict) -> str:
+    for key in (
+        "text",
+        "content",
+        "chunk_text",
+        "page_content",
+        "document",
+    ):
+        value = record.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _chunk_source(record: dict) -> str:
+    for key in ("source", "source_file", "filename", "document_name"):
+        value = record.get(key)
+        if value:
+            return str(value)
+    return "Unknown source"
+
+
+def _chunk_section(record: dict) -> str | None:
+    for key in ("section", "heading", "title"):
+        value = record.get(key)
+        if value:
+            return str(value)
+    return None
+
+
+def _chunk_id(record: dict, index: int) -> str:
+    for key in ("chunk_id", "id", "chunk"):
+        value = record.get(key)
+        if value is not None:
+            return str(value)
+    return f"chunk_{index}"
+
+
+class StreamlitKnowledgeRAG:
+    """Thin UI adapter over the pre-built Week 8 knowledge index.
+
+    The evaluation script remains the source of truth for retrieval metrics.
+    This class only loads the already-built index, retrieves top-k chunks, and
+    generates a grounded answer for the demo UI.
+    """
+
+    def __init__(
+        self,
+        embeddings_path: Path,
+        metadata_path: Path,
+    ) -> None:
+        self.embeddings_path = embeddings_path
+        self.metadata_path = metadata_path
+        self.embeddings = np.load(embeddings_path).astype(np.float32)
+
+        with metadata_path.open("r", encoding="utf-8") as handle:
+            self.metadata = [
+                json.loads(line)
+                for line in handle
+                if line.strip()
+            ]
+
+        if len(self.metadata) != len(self.embeddings):
+            raise ValueError(
+                "Knowledge embeddings and metadata have different row counts: "
+                f"{len(self.embeddings)} vs {len(self.metadata)}."
+            )
+
+        norms = np.linalg.norm(self.embeddings, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        self.normalized_embeddings = self.embeddings / norms
+
+        self.embedding_model = os.getenv(
+            "KNOWLEDGE_EMBEDDING_MODEL",
+            "text-embedding-3-small",
+        )
+        self.chat_model = os.getenv(
+            "KNOWLEDGE_CHAT_MODEL",
+            "gpt-4o-mini",
+        )
+        self.client = OpenAI()
+
+    def retrieve(
+        self,
+        question: str,
+        top_k: int = 6,
+    ) -> list[dict]:
+        response = self.client.embeddings.create(
+            model=self.embedding_model,
+            input=question,
+        )
+        query_vector = np.asarray(
+            response.data[0].embedding,
+            dtype=np.float32,
+        )
+
+        if query_vector.shape[0] != self.normalized_embeddings.shape[1]:
+            raise ValueError(
+                "Query embedding dimension does not match the stored "
+                "knowledge index. Check KNOWLEDGE_EMBEDDING_MODEL."
+            )
+
+        query_norm = np.linalg.norm(query_vector)
+        if query_norm == 0:
+            raise ValueError("Received a zero-length query embedding.")
+
+        scores = self.normalized_embeddings @ (query_vector / query_norm)
+        k = min(top_k, len(scores))
+        top_indices = np.argsort(scores)[::-1][:k]
+
+        results = []
+        for rank, index in enumerate(top_indices, start=1):
+            record = self.metadata[int(index)]
+            results.append(
+                {
+                    "rank": rank,
+                    "score": float(scores[index]),
+                    "source": _chunk_source(record),
+                    "section": _chunk_section(record),
+                    "chunk_id": _chunk_id(record, int(index)),
+                    "text": _chunk_text(record),
+                    "metadata": record,
+                }
+            )
+        return results
+
+    def answer(
+        self,
+        question: str,
+        retrieved: list[dict],
+    ) -> str:
+        context_blocks = []
+        for item in retrieved:
+            label = f"[{item['rank']}] {item['source']}"
+            if item["section"]:
+                label += f" — {item['section']}"
+            label += f" — {item['chunk_id']}"
+            context_blocks.append(
+                f"{label}\n{item['text']}"
+            )
+
+        context = "\n\n".join(context_blocks)
+
+        instructions = (
+            "You are a document-aware real-estate knowledge assistant. "
+            "Answer only from the retrieved context below. Do not use outside "
+            "knowledge to fill missing facts. If the context does not support "
+            "the answer, say that the provided knowledge documents do not "
+            "contain enough information. Keep the answer concise and cite "
+            "supporting chunks inline as [1], [2], etc."
+        )
+
+        response = self.client.responses.create(
+            model=self.chat_model,
+            instructions=instructions,
+            input=(
+                f"Question:\n{question}\n\n"
+                f"Retrieved context:\n{context}"
+            ),
+        )
+        return response.output_text.strip()
+
+    def ask(
+        self,
+        question: str,
+        top_k: int = 6,
+    ) -> tuple[str, list[dict]]:
+        retrieved = self.retrieve(question, top_k=top_k)
+        answer = self.answer(question, retrieved)
+        return answer, retrieved
+
+
+@st.cache_resource
+def create_knowledge_rag_service() -> StreamlitKnowledgeRAG:
+    embeddings_path = _find_knowledge_artifact(
+        KNOWLEDGE_EMBEDDINGS_CANDIDATES,
+        ".npy",
+    )
+    metadata_path = _find_knowledge_artifact(
+        KNOWLEDGE_METADATA_CANDIDATES,
+        ".jsonl",
+    )
+    return StreamlitKnowledgeRAG(
+        embeddings_path=embeddings_path,
+        metadata_path=metadata_path,
+    )
+
+
+# =====================================================================
 # Streamlit configuration
 # =====================================================================
 
@@ -123,6 +363,10 @@ if "search_history" not in st.session_state:
 
 if "hybrid_history" not in st.session_state:
     st.session_state.hybrid_history = []
+
+
+if "knowledge_history" not in st.session_state:
+    st.session_state.knowledge_history = []
 
 
 # =====================================================================
@@ -230,6 +474,23 @@ with st.sidebar:
                     )
 
 
+    st.divider()
+
+    st.header("📖 Knowledge RAG History")
+
+    knowledge_history = st.session_state.knowledge_history
+
+    if not knowledge_history:
+        st.caption("No knowledge questions yet.")
+    else:
+        for item in knowledge_history:
+            title = f"{item['timestamp']} | {item['question']}"
+            with st.expander(title):
+                st.metric("Retrieved Chunks", item["result_count"])
+                if item.get("top_source"):
+                    st.write(f"**Top Source:** {item['top_source']}")
+
+
 # =====================================================================
 # Header
 # =====================================================================
@@ -242,14 +503,15 @@ st.title(
 st.caption(
     "Structured property search, full-corpus semantic retrieval, "
     "hybrid similar-home recommendation, sold-comparable analysis, "
-    "and LangGraph-based property reasoning."
+    "document-aware RAG, and LangGraph-based property reasoning."
 )
 
 
-search_tab, similar_tab = st.tabs(
+search_tab, similar_tab, knowledge_tab = st.tabs(
     [
         "🔎 Property Search",
         "🏡 Similar Home Recommendation",
+        "📖 Knowledge Assistant",
     ]
 )
 
@@ -955,3 +1217,120 @@ with similar_tab:
                                 st.write(
                                     listing.public_remarks
                                 )
+
+
+# =====================================================================
+# TAB 3 — WEEK 8 DOCUMENT-AWARE KNOWLEDGE RAG
+# =====================================================================
+
+
+with knowledge_tab:
+    st.subheader("Ask the project knowledge base")
+
+    st.caption(
+        "Ask real-estate concept, MLS-field, terminology, or handbook "
+        "questions. The assistant retrieves the most relevant document "
+        "chunks and generates an answer grounded only in those sources."
+    )
+
+    st.info(
+        "Week 8 pipeline: document chunks → embedding index → top-k "
+        "retrieval → grounded generation. Retrieval evaluation remains "
+        "separate in knowledge_retrieval_cases.json."
+    )
+
+    example_col1, example_col2, example_col3 = st.columns(3)
+    with example_col1:
+        st.caption("Example: What does DOM mean in real estate?")
+    with example_col2:
+        st.caption(
+            "Example: Which field stores days on market in california_sold?"
+        )
+    with example_col3:
+        st.caption("Example: What does the handbook say about RAG?")
+
+    knowledge_question = st.text_input(
+        "Ask a knowledge question",
+        placeholder=(
+            "Try: Which field stores days on market in california_sold?"
+        ),
+        key="knowledge_question",
+    )
+
+    knowledge_top_k = st.slider(
+        "Retrieved chunks",
+        min_value=1,
+        max_value=8,
+        value=6,
+        key="knowledge_top_k",
+    )
+
+    if st.button(
+        "Ask Knowledge Assistant",
+        key="knowledge_ask_button",
+    ):
+        if not knowledge_question.strip():
+            st.warning("Please enter a knowledge question.")
+        else:
+            try:
+                service = create_knowledge_rag_service()
+
+                with st.spinner(
+                    "🎨🖊️ Generating a grounded answer from retrieved evidence..."
+                ):
+                    answer, retrieved = service.ask(
+                        knowledge_question.strip(),
+                        top_k=knowledge_top_k,
+                    )
+
+                st.session_state.knowledge_history.insert(
+                    0,
+                    {
+                        "timestamp": datetime.now().strftime("%H:%M:%S"),
+                        "question": knowledge_question.strip(),
+                        "result_count": len(retrieved),
+                        "top_source": (
+                            retrieved[0]["source"] if retrieved else None
+                        ),
+                    },
+                )
+                st.session_state.knowledge_history = (
+                    st.session_state.knowledge_history[:5]
+                )
+
+                st.markdown("### Grounded Answer")
+                st.write(answer)
+
+                st.markdown("### Retrieved Evidence")
+
+                for item in retrieved:
+                    section_text = (
+                        f" — {item['section']}"
+                        if item["section"]
+                        else ""
+                    )
+                    expander_title = (
+                        f"#{item['rank']} | {item['source']}"
+                        f"{section_text} | score={item['score']:.4f}"
+                    )
+
+                    with st.expander(
+                        expander_title,
+                        expanded=(item["rank"] == 1),
+                    ):
+                        st.write(f"**Chunk:** {item['chunk_id']}")
+                        st.write(f"**Similarity:** {item['score']:.4f}")
+                        st.write(item["text"] or "No chunk text available.")
+
+            except FileNotFoundError as exc:
+                st.error(str(exc))
+                st.caption(
+                    "Build the Week 8 knowledge index first, then rerun "
+                    "Streamlit. The app searches knowledge-related artifacts "
+                    "under artifacts/."
+                )
+
+            except Exception as exc:
+                st.error("Knowledge RAG could not be completed.")
+                with st.expander("Technical details"):
+                    st.code(str(exc))
