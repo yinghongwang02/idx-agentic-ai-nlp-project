@@ -4,10 +4,11 @@
 
 A production-style LangGraph-based real-estate copilot that combines
 structured MLS retrieval, full-corpus semantic search, hybrid
-recommendation, session memory, Fair Housing guardrails, sold-comparable
-market analysis, and bounded parallel property analysis.
+recommendation, document-aware knowledge RAG, session memory, Fair Housing
+guardrails, sold-comparable market analysis, and bounded parallel property
+analysis.
 
-The system supports two complementary user workflows:
+The system supports three complementary user workflows:
 
 1.  **Natural-language property search** --- converts conversational
     requirements into structured MLS retrieval and explainable
@@ -15,6 +16,9 @@ The system supports two complementary user workflows:
 2.  **Similar-home recommendation** --- combines structured property
     similarity with embedding-based semantic similarity, then validates
     recommended listings against recent sold comparables.
+3.  **Knowledge Assistant** --- retrieves project-document evidence for
+    real-estate concepts, MLS-field mappings, and handbook/reference
+    questions, then generates a grounded answer from that context.
 
 > This repository contains my individual project work for the IDX
 > Exchange Summer 2026 internship. Internal MLS data is not included.
@@ -23,6 +27,10 @@ The system supports two complementary user workflows:
 
 -   LangGraph orchestration with conditional query blocking and output
     screening
+-   **Bounded parallel candidate analysis** using a reusable
+    `PropertyAnalysisSubgraph` and up to four concurrent candidate analyses;
+    benchmarked at **2.21× speedup** and **54.7% lower median candidate-analysis
+    latency** while preserving deterministic Top-5 outputs
 -   Natural-language intent parsing with hard constraints and soft
     preferences
 -   Multi-turn session memory for progressive property-search refinement
@@ -36,14 +44,19 @@ The system supports two complementary user workflows:
     similarity
 -   Sold-comparable validation with PPSF-based value signals and
     evidence-quality scoring
--   Reusable listing-level `PropertyAnalysisSubgraph`
--   Hierarchical parallel analysis with bounded four-worker candidate
-    concurrency
 -   Deterministic Top-K ranking with stable listing-key tie-breaking
 -   Typed, validated, immutable recommendation scoring configuration
 -   Candidate-level failure isolation and structured error reporting
 -   Retrieval evaluation comparing structured, keyword, semantic, and
     hybrid search
+-   Document-aware knowledge RAG over project-maintained MLS mappings,
+    real-estate terminology, California disclosure references, and handbook content
+-   21-case knowledge-retrieval benchmark with source, section, content,
+    cross-document, and unsupported-query coverage
+-   Top-K sensitivity analysis selecting Top-6 retrieval after improving
+    source recall from 94.4% to 100.0%
+-   Lightweight grounded LLM generation with retrieved-source attribution
+    and unsupported-query fallback
 -   144 passing automated tests plus MySQL-backed smoke and performance
     validation
 
@@ -254,6 +267,114 @@ comparable count, and usable PPSF coverage. This keeps recommendation
 similarity separate from pricing evidence and makes the final
 recommendation easier to inspect.
 
+## Document-Aware Knowledge RAG --- Week 8
+
+Week 8 adds a separate knowledge-RAG path for questions about real-estate
+terminology, California agency/disclosure concepts, and project-specific MLS
+field mappings. It does not replace property search: listing retrieval returns
+properties, while knowledge retrieval returns explanatory document chunks.
+
+### Knowledge Pipeline
+
+The corpus currently uses the project-maintained `mls_field_mapping.md`,
+real-estate terminology and law/reference documents, and the internship
+handbook. Documents are chunked with source/section metadata, embedded through
+the existing provider abstraction, L2-normalized, and indexed in FAISS.
+
+The knowledge corpus currently includes:
+
+- `docs/mls_field_mapping.md` — project-maintained mappings between raw MLS fields and project-facing field names.
+- `docs/real_estate_terminology.md` — curated real-estate terminology and concept references used for document retrieval.
+- `docs/real_estate_law.md` — curated California agency/disclosure reference material used for knowledge retrieval.
+- `handbook.pdf` — internship handbook content used as an additional project knowledge source.
+
+These documents are used as project knowledge sources; the project-maintained
+MLS mapping is not presented as official IDX MLS documentation. 
+
+``` text
+Knowledge Documents
+    ↓
+Chunk + Source/Section Metadata
+    ↓
+Embeddings + FAISS
+    ↓
+Top-K Semantic Retrieval
+    ↓
+Grounded LLM Generation
+    ↓
+Answer + Retrieved Sources
+```
+
+`mls_field_mapping.md` is project-maintained documentation and is not presented
+as official IDX MLS documentation.
+
+### Retrieval Evaluation
+
+A **21-case** benchmark contains 18 answerable questions and 3 unsupported
+questions. Answerable cases cover terminology, California agency/disclosure
+concepts, MLS field mappings, and cross-document retrieval. The evaluator
+tracks Top-1 expected-source accuracy and Top-K expected-source, section, and
+content hits, with simple failure diagnostics.
+
+A Top-K sensitivity check produced:
+
+| Metric | Top-4 | Top-6 |
+| --- | ---: | ---: |
+| Top-1 source accuracy | 88.9% | 88.9% |
+| Expected-source hit rate | 94.4% | **100.0%** |
+| Expected-section hit rate | 83.3% | **88.9%** |
+| Expected-content hit rate | 94.4% | 94.4% |
+
+Top-6 is the current default because it recovered the missing mapping document
+for the cross-document list-to-close case. The unchanged Top-1 metric shows
+that increasing K improved retrieval coverage rather than ranking quality.
+Remaining misses are mainly Top-1 ambiguity, section-label alignment, and one
+strict multi-term content expectation.
+
+The three unsupported cases had Top-1 similarity scores of 0.4043, 0.4216,
+and 0.3409. Because this sample is too small to calibrate a reliable cutoff,
+the implementation does **not** hard-code a similarity threshold from these
+values.
+
+Top-6 is also the default used by the current knowledge-retrieval code and
+Streamlit Knowledge Assistant. The evaluator keeps `--top-k` configurable so
+the sensitivity result is reproducible without changing code:
+
+``` bash
+# Current/default evaluation depth
+python -m src.dev_evaluate_knowledge_retrieval --top-k 6
+
+# Reproduce the Top-4 comparison
+python -m src.dev_evaluate_knowledge_retrieval --top-k 4
+```
+
+Representative benchmark questions include:
+
+-   `What does DOM mean in real estate?`
+-   `Which field stores days on market in california_sold?`
+-   `Which MLS field maps to bedroom count?`
+-   `Which california_sold fields would you use to calculate a list-to-close price ratio?`
+-   `Does California allow dual agency?`
+-   unsupported/current-information checks such as
+    `What is the current average mortgage rate in California?`
+
+### Grounded Generation
+
+`GroundedKnowledgeAnswerer` reuses the existing `BaseLLMProvider` interface.
+It sends the retrieved Top-6 chunks to the LLM with instructions to use only
+that context and to abstain when the context is insufficient.
+
+A five-question smoke test covered DOM terminology, a project MLS bedroom
+mapping, a cross-document list-to-close field question, California dual
+agency, and an unsupported current mortgage-rate question. The four supported
+questions produced context-consistent answers; the unsupported question
+returned the configured insufficient-information fallback instead of a
+mortgage-rate estimate.
+
+The reported source list represents **retrieved context**, not sentence-level
+citation attribution. No reranker, RAGAS-style generation benchmark, or
+calibrated confidence threshold is claimed in the current implementation.
+
 ## Architecture
 
 ### Core Property-Search Workflow
@@ -350,263 +471,6 @@ flowchart TD
 This extension reuses the existing market and comparable-value logic,
 avoiding a second overlapping market-analysis path.
 
-## Core Workflow
-
-### 1. Natural-Language Intent Parsing
-
-The `IntentAgent` converts conversational requests into a structured
-`PropertyIntent`.
-
-Supported fields include:
-
--   City
--   Maximum budget
--   Minimum bedrooms
--   Minimum bathrooms
--   Property type
--   Hard search keywords
--   Soft user preferences
-
-Example:
-
-``` text
-Find townhouses in Irvine under 1.2 million
-with a garage, preferably with a pool and a view.
-
-↓
-
-PropertyIntent
-{
-    city: Irvine
-    max_price: 1200000
-    property_type: Townhouse
-    keywords: ["garage"]
-    preferences: ["pool", "view"]
-}
-```
-
-Hard constraints determine candidate eligibility. Soft preferences
-remain outside SQL filtering and influence downstream ranking instead.
-
-### 2. Multi-Turn Session Memory
-
-`SessionMemory` allows incomplete follow-up queries to inherit prior
-search criteria.
-
-``` text
-Turn 1: Find townhouses in Irvine
-Turn 2: Under 1.2 million
-Turn 3: At least 3 bedrooms with a garage, preferably with a pool
-```
-
-The resulting intent retains city, property type, budget, bedroom count,
-hard keywords, and soft preferences. Blocked compliance requests do not
-modify memory.
-
-### 3. Query and Output Compliance
-
-The workflow applies rule-based Fair Housing safeguards at two
-boundaries:
-
-``` text
-User Query → Query Compliance → Workflow → Output Compliance → Final Response
-```
-
-  Risk level   Behavior
-  ------------ --------------------------------------------
-  Green        Continue normally
-  Yellow       Continue using neutral, objective language
-  Red          Block before downstream workflow execution
-
-Current coverage includes protected-class requests, familial-status
-exclusions, religion, national origin, sex or gender restrictions,
-disability-related exclusion, subjective safety language, school
-proxies, and demographic steering.
-
-The guardrail distinguishes exclusionary language from legitimate
-accessibility requests.
-
-### 4. Structured MySQL Property Search
-
-The active-listing search path follows the Repository Pattern:
-
-``` text
-PropertyIntent
-    ↓
-PropertyQueryBuilder
-    ↓
-SearchRepository
-    ├── CSVSearchRepository
-    └── MySQLSearchRepository
-    ↓
-PropertyFormatter
-    ↓
-ListingSchema
-```
-
-The MySQL implementation uses parameterized SQL and converts raw rows
-into typed Pydantic objects. Current hard filtering supports city,
-price, bedrooms, bathrooms, property type, and required listing-remark
-keywords.
-
-### 5. Property Analysis Subgraph
-
-Each candidate listing is analyzed by a dedicated
-`PropertyAnalysisSubgraph`.
-
-The subgraph produces three recommendation signals:
-
-  -----------------------------------------------------------------------
-  Signal                              Responsibility
-  ----------------------------------- -----------------------------------
-  Preference Match                    Measures alignment with optional
-                                      user preferences
-
-  Comparable Value                    Evaluates asking value relative to
-                                      recent similar sales
-
-  Negotiation                         Estimates buyer leverage from
-                                      comparable-market signals
-  -----------------------------------------------------------------------
-
-The subgraph returns one structured `RecommendationScore`;
-collection-level ranking remains the responsibility of the parent graph.
-
-### 6. Market and Comparable Retrieval
-
-`MarketAgent` uses recent sold records from `california_sold` to produce
-city-level and listing-specific market context.
-
-Comparable retrieval first searches for recent sold properties within a
-recent-sale window using strict similarity criteria. When insufficient
-comparable sales are available, the search progressively relaxes
-matching constraints before falling back to broader market-level
-comparables:
-
-``` text
-strict → relaxed → broad → market_fallback
-```
-
-Matching may consider:
-
--   City and postal code
--   Property subtype
--   Bedroom and bathroom ranges
--   Living-area tolerance
--   Recent sale window
-
-This preserves evidence coverage when strict comparables are sparse.
-
-### 7. Configurable Recommendation Scoring
-
-The default recommendation policy combines three normalized scores:
-
-  Component            Default weight
-  ------------------ ----------------
-  Preference Match                40%
-  Comparable Value                35%
-  Negotiation                     25%
-
-``` text
-Overall Score =
-    Preference Match × 0.40
-  + Comparable Value × 0.35
-  + Negotiation × 0.25
-```
-
-Weights and label thresholds are stored in an immutable
-`RecommendationConfig`. Validation ensures that weights are
-non-negative, sum to 1.0, and that score thresholds remain ordered.
-
-  Score       Label
-  ----------- ----------------
-  80--100     Strong Match
-  65--79.99   Good Match
-  50--64.99   Moderate Match
-  Below 50    Limited Match
-
-The scoring policy can be replaced through dependency injection without
-changing the subgraph or parent workflow.
-
-### 8. Deterministic Top-K Ranking
-
-Parallel tasks complete in nondeterministic order, so completion order
-is never treated as recommendation order.
-
-Final ranking uses:
-
-``` text
-1. Overall score descending
-2. Listing key ascending as a deterministic tie-breaker
-```
-
-This preserves stable Top-5 results across sequential and parallel
-execution.
-
-### 9. Explainable Recommendations
-
-Each final recommendation retains:
-
--   Overall recommendation score
--   Recommendation label
--   Preference-match score
--   Comparable-value score
--   Negotiation score
--   Supporting reason signals
-
-The explanation layer consumes ranked `RecommendationScore` objects and
-is screened by output compliance before reaching the user.
-
-### 10. Semantic Retrieval
-
-Active MLS listings are converted into canonical embedding text and
-encoded through an `EmbeddingProvider` abstraction. The resulting
-vectors are L2-normalized and indexed with FAISS `IndexFlatIP`, making
-inner-product search equivalent to cosine-similarity ranking for
-normalized vectors.
-
-The embedding pipeline supports batch generation, metadata alignment
-validation, token auditing, and checkpoint/resume for recoverable
-full-corpus builds.
-
-### 11. Hybrid Search
-
-Hybrid search combines structured MLS eligibility filtering with
-semantic reranking. Hard constraints such as city, budget, bedroom
-count, bathroom count, property type, and required keywords remain
-deterministic, while softer preferences are represented through
-embedding similarity.
-
-This design prevents pure semantic retrieval from returning attractive
-but structurally ineligible listings.
-
-### 12. Hybrid Similar-Home Recommendation
-
-Given a target listing ID, the recommendation service scores compatible
-active listings using a **60-point Property-Attribute Similarity component** and
-a **40-point semantic similarity component**.
-
-Unlike hybrid property search, this path does not apply user-defined SQL
-hard constraints before ranking. It scores compatible listings from the
-full embedded active-listing corpus, with property type used as a
-compatibility guardrail.
-
-The final hybrid score therefore balances objective property similarity
-with qualitative similarity captured from listing descriptions.
-
-### 13. Sold-Comp Validation
-
-The Top-K similar-home recommendations are passed through existing
-sold-comparable market analysis. The system reports asking PPSF,
-comparable median PPSF, asking-to-comp PPSF ratio, comparable median
-close price, comparable-value score, match level, comparable count, and
-evidence quality.
-
-This validation does not change what "similar" means; it adds a separate
-market-evidence layer explaining whether each similar listing also
-appears attractively or weakly priced relative to recent comparable
-sales.
-
 ## Parallel Execution and Failure Isolation
 
 The parent workflow supports both execution modes:
@@ -668,20 +532,17 @@ speedup to each layer independently.
 
 ## Interactive Streamlit Application
 
-The Streamlit application exposes two complementary workflows.
+The Streamlit application now exposes three complementary tabs: **Property Search**, 
+**Similar Home Recommendation**, and **Knowledge Assistant**.
 
 ### Property Search
 
--   Natural-language MLS search
--   Hard constraints and soft preferences
--   Multi-turn session memory
--   Structured intent and memory inspection
+-   Natural-language MLS search with hard constraints and soft preferences
+-   Multi-turn session memory and search history
 -   Fair Housing query/output safeguards
 -   MySQL-backed candidate retrieval
 -   Bounded parallel property analysis
--   Market-aware recommendation scoring
--   Explainable Top-5 recommendations
--   Session history and search reset
+-   Market-aware scoring and explainable Top-5 recommendations
 
 ### Similar Home Recommendation
 
@@ -689,293 +550,125 @@ The Streamlit application exposes two complementary workflows.
 -   Property-attribute + semantic hybrid similarity
 -   Full-corpus embedding coverage
 -   Top-K similar active listings
--   Property-type compatibility handling
--   Sold-comparable validation
--   Asking and comparable median PPSF
--   Comparable-value score
--   Comparable-evidence quality
+-   Sold-comparable validation and PPSF-based evidence
 -   Expandable similarity and market-evidence breakdowns
 
-The two workflows intentionally remain separate at the UI boundary:
-property search answers **what satisfies the user's requirements**,
-while similar-home recommendation answers **what resembles a selected
-property**.
+### Knowledge Assistant
+
+The Week 8 demo exposes the document-aware RAG path directly in Streamlit.
+Users can enter a project-knowledge question, choose the number of retrieved
+chunks, inspect the grounded answer, and expand the retrieved evidence with
+source, section, chunk ID, and similarity score. The sidebar also keeps a
+separate **Knowledge RAG History**.
+
+The current code/demo defaults to **Top-6** retrieved chunks, matching the
+retrieval sensitivity result. The UI control remains adjustable for interactive
+inspection; quantitative Top-4/Top-6 comparisons should be reproduced with the
+CLI evaluator rather than inferred from one demo query.
+
+Recommended demo questions:
+
+-   **Terminology:** `What does DOM mean in real estate?`
+-   **Project field mapping:** `Which field stores days on market in california_sold?`
+-   **Project field mapping:** `Which MLS field maps to bedroom count?`
+-   **Cross-document:** `Which california_sold fields would you use to calculate a list-to-close price ratio?`
+-   **California agency:** `Does California allow dual agency?`
+-   **Handbook:** `What does the handbook say about RAG?`
+-   **Unsupported/fallback check:** `What is the current average mortgage rate in California?`
+
+The first five categories overlap with the retrieval/generation evaluation and
+are useful for demonstrating terminology retrieval, project-specific mappings,
+cross-document evidence, legal/reference retrieval, and abstention behavior.
+The handbook question is useful as an interactive corpus demo.
+
+The three UI paths intentionally remain separate:
+
+-   property search answers **what satisfies the user's requirements**;
+-   similar-home recommendation answers **what resembles a selected property**;
+-   the Knowledge Assistant answers **what the project knowledge documents
+    support**.
 
 The workflow object is stored in the Streamlit session so conversational
-search criteria persist across turns.
+property-search criteria persist across turns. Knowledge questions maintain
+their own RAG history in the sidebar.
 
-The full application currently depends on internal IDX Exchange MLS
-datasets that cannot be redistributed. A public demonstration can use
-synthetic active-listing and sold-comparable repositories while
-preserving the higher-level architecture. 
 
 ## Technology Stack
 
-  Category                 Technology
-  ------------------------ ----------------------
-  Language                 Python 3.10
-  Workflow orchestration   LangGraph
-  LLM framework            LangChain
-  Embeddings               OpenAI Embeddings
-  Vector retrieval         FAISS
-  Token auditing           tiktoken
-  Numerical processing     NumPy
-  Data validation          Pydantic
-  Database                 MySQL
-  Frontend                 Streamlit
-  Concurrency              `ThreadPoolExecutor`
-  Testing                  Pytest
-  Version control          Git and GitHub
+Python 3.10, LangGraph, LangChain, OpenAI embeddings/LLM providers, FAISS,
+NumPy, Pydantic, MySQL, Streamlit, Pytest, and `ThreadPoolExecutor`.
 
 ## Local Setup
 
-### Install dependencies
-
 ``` bash
 python -m venv .venv
-```
-
-``` bash
-# Windows
-.venv\Scripts\activate
-
-# macOS / Linux
-source .venv/bin/activate
-```
-
-``` bash
+# Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-```
-
-### Configure environment variables
-
-Create a local `.env` file from the provided template:
-
-``` bash
-# Windows
-copy .env.example .env
-
-# macOS / Linux
-cp .env.example .env
-```
-
-Required local configuration includes MySQL host, port, user, password,
-database, and any configured model-provider credentials. Secrets must
-not be committed.
-
-### Run the application
-
-``` bash
 python -m streamlit run src/app/streamlit_app.py
 ```
 
-The application is normally available at:
-
-``` text
-http://localhost:8501
-```
+Create `.env` from `.env.example` and configure local MySQL and model-provider
+credentials. Secrets and internal MLS data must not be committed.
 
 ## Testing and Validation
 
-Run all tests:
-
 ``` bash
 pytest -v
-```
-
-Current result:
-
-``` text
-144 passed
-```
-
-Run the fast suite without MySQL-backed integration tests:
-
-``` bash
-pytest -m "not integration" -v
-```
-
-Run the sequential/parallel consistency regression:
-
-``` bash
-pytest tests/test_candidate_parallel_consistency.py -v
-```
-
-Run the real MySQL-backed parallel smoke test:
-
-``` bash
-python -m src.dev_test_candidate_parallel
-```
-
-Run the latency benchmark:
-
-``` bash
+python -m src.dev_evaluate_retrieval
+python -m src.dev_evaluate_knowledge_retrieval              # default Top-6
+python -m src.dev_evaluate_knowledge_retrieval --top-k 6      # explicit current setting
+python -m src.dev_evaluate_knowledge_retrieval --top-k 4      # sensitivity comparison
+python -m src.dev_test_grounded_knowledge
 python -m src.dev_benchmark_candidate_parallel
 ```
 
-Run semantic-search tests:
-
-``` bash
-pytest tests/test_semantic_search.py -v
-```
-
-Run hybrid-search tests:
-
-``` bash
-pytest tests/test_hybrid_search.py -v
-```
-
-Run hybrid similar-home recommendation tests:
-
-``` bash
-pytest tests/test_hybrid_similarity.py -v
-```
-
-Run the full-corpus retrieval comparison:
-
-``` bash
-python -m src.dev_evaluate_retrieval
-```
-
-Validation currently covers:
-
--   Intent parsing and hard/soft preference separation
--   Session-memory inheritance and reset behavior
--   Fair Housing query and output rules
--   Query-builder and repository behavior
--   Property formatting and typed schemas
--   Market, comparable-value, preference, and negotiation analysis
--   Configurable recommendation weights and thresholds
--   Recommendation labels, ranking, tie-breaking, and output schema
--   Property-analysis subgraph fan-out/fan-in behavior
--   Parent LangGraph routing and error handling
--   Sequential/parallel candidate coverage and score consistency
--   MySQL-backed smoke testing
--   Multi-run latency benchmarking
--   Listing embedding-text construction and missing-value handling
--   FAISS index construction, normalization, persistence, and reload
-    validation
--   Semantic-search query validation and metadata/index alignment
--   Hybrid structured-semantic search behavior
--   Retrieval metrics across structured, keyword, semantic, and hybrid
-    modes
--   Hybrid similar-home scoring, target exclusion, and property-type
-    compatibility
--   Sold-comparable recommendation validation and evidence-quality
-    reporting
+Current automated suite: **144 passing tests**. Validation includes workflow
+routing, compliance, session memory, repository/query behavior, market and
+recommendation scoring, sequential/parallel consistency, semantic/hybrid
+listing retrieval, similar-home scoring, knowledge retrieval evaluation, and
+grounded-generation smoke testing.
 
 ## Repository Structure
 
 ``` text
 src/
-├── agents/                  # Specialized workflow and market-analysis agents
-├── app/                     # Streamlit application
-├── compliance/              # Fair Housing rule definitions
-├── config/                  # Application and recommendation configuration
-├── embeddings/              # Listing-text preparation and embedding utilities
-├── evaluation/              # Retrieval evaluation cases and metrics
-├── memory/                  # Multi-turn session memory
-├── providers/               # LLM and embedding provider abstractions
-├── recommendation/          # Ranking, hybrid similarity, scoring, and explanation
-├── schemas/                 # Pydantic and TypedDict contracts
-├── search/                  # Structured, semantic, hybrid, and repository search
-├── workflow/                # Parent LangGraph and property-analysis subgraph
-├── dev_build_listing_embeddings.py
-├── dev_build_faiss_index.py
-├── dev_semantic_search.py
-├── dev_hybrid_search.py
-├── dev_hybrid_recommendation.py
-├── dev_evaluate_retrieval.py
-├── dev_test_candidate_parallel.py
-└── dev_benchmark_candidate_parallel.py
-
-tests/                       # Unit, regression, retrieval, and integration tests
+├── agents/          # Workflow and market-analysis agents
+├── app/             # Streamlit application
+├── embeddings/      # Listing embedding utilities
+├── evaluation/      # Retrieval evaluation cases and metrics
+├── knowledge/       # Grounded knowledge answering
+├── memory/          # Multi-turn session memory
+├── providers/       # LLM and embedding provider abstractions
+├── recommendation/  # Ranking, similarity, scoring, explanation
+├── search/          # Structured, semantic, hybrid, knowledge retrieval
+└── workflow/        # Parent graph and property-analysis subgraph
 
 docs/
-└── architecture.md          # Detailed architecture and design decisions
+├── architecture.md
+├── mls_field_mapping.md
+├── real_estate_terminology.md
+└── real_estate_law.md
 
 artifacts/
 ├── benchmarks/
-│   ├── candidate_parallel_baseline.csv
-│   └── retrieval_comparison_full.csv
-└── embeddings/              # Generated embedding/index artifacts; excluded as appropriate
-
-examples/
-└── sample_queries.md
+├── embeddings/
+└── knowledge/
 ```
 
-Internal MLS datasets are intentionally excluded. Public demonstrations
-should use synthetic data. 
-
-## Current Implementation
-
-  -----------------------------------------------------------------------
-  Status                              Capability
-  ----------------------------------- -----------------------------------
-  Implemented                         LangGraph parent workflow with
-                                      conditional compliance routing
-
-  Implemented                         Multi-turn memory-aware intent
-                                      parsing
-
-  Implemented                         MySQL active-listing and
-                                      sold-comparable repositories
-
-  Implemented                         Reusable parallel property-analysis
-                                      subgraph
-
-  Implemented                         Bounded candidate-level concurrency
-
-  Implemented                         Configurable deterministic
-                                      recommendation scoring
-
-  Implemented                         Sequential/parallel consistency
-                                      regression
-
-  Implemented                         Multi-run candidate-analysis
-                                      latency benchmark
-
-  Implemented                         Full-corpus embedding pipeline with
-                                      checkpoint/resume
-
-  Implemented                         52,794-listing FAISS semantic index
-
-  Implemented                         Query-time semantic search
-
-  Implemented                         Hybrid structured-semantic property
-                                      search
-
-  Implemented                         Retrieval evaluation across four
-                                      search modes
-
-  Implemented                         Hybrid similar-home recommendation
-
-  Implemented                         Sold-comparable validation for
-                                      similar-home recommendations
-
-  Implemented                         Streamlit similar-home
-                                      recommendation interface
-  -----------------------------------------------------------------------
-
-Future architectural evolution and planned extensions are documented in
-`docs/architecture.md`.
+Internal MLS datasets are excluded; public demos should use synthetic data.
 
 ## Project Status
 
-The Week 6 milestone established the core production-style MVP: a tested
-LangGraph workflow with reusable property-analysis subgraphs,
-hierarchical parallel execution, deterministic recommendation behavior,
-configurable scoring, Fair Housing safeguards, MySQL-backed active/sold
-retrieval, and quantitative latency validation.
+Week 6 established the tested LangGraph MVP with bounded parallel property
+analysis and a measured **2.21×** candidate-analysis speedup (**54.7%** lower
+median latency). Week 7 added the **52,794-listing** embedding index, semantic
+and hybrid retrieval, similar-home recommendation, sold-comp validation, and
+the expanded Streamlit workflow.
 
-Week 7 extends that MVP with a **52,794-listing full-corpus embedding
-index**, FAISS semantic retrieval, hybrid structured-semantic search,
-retrieval evaluation, hybrid similar-home recommendation,
-sold-comparable validation, and an expanded Streamlit interface.
-
-The original LangGraph property-search architecture remains intact. The
-new retrieval and similar-home recommendation capabilities are
-complementary services that reuse existing market-analysis components
-rather than duplicating the core property-analysis subgraph.
-
-The current automated test suite contains **144 passing tests**.
+Week 8 adds document-aware knowledge RAG and exposes it through a third
+Streamlit **Knowledge Assistant** tab with adjustable retrieval depth,
+grounded answers, expandable evidence, and separate RAG history. On the
+current 18 answerable-case benchmark, Top-6 retrieval reached **100.0%
+expected-source hit rate**; a five-question grounded-generation smoke test
+also demonstrated unsupported-query abstention. These are project-benchmark
+results, not claims of general production accuracy.
