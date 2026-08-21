@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import argparse
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +21,26 @@ DEFAULT_METADATA_PATH = Path(
     "artifacts/knowledge/knowledge_metadata.jsonl"
 )
 
-TOP_K = 4
+TOP_K = 6
+
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments."""
+
+    parser = argparse.ArgumentParser(
+        description="Evaluate knowledge retrieval quality."
+    )
+
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=TOP_K,
+        help=(
+            "Number of retrieved chunks per query. "
+            f"Default: {TOP_K}."
+        ),
+    )
+
+    return parser.parse_args()
 
 
 def load_cases(
@@ -131,11 +151,57 @@ def evaluate_answerable_case(case, results):
         "all_expected_sources_hit": all_expected_sources_hit,
     }
 
+def get_failure_reasons(
+    case: dict[str, Any],
+    metrics: dict[str, Any],
+) -> list[str]:
+    """Return interpretable failure reasons for one answerable case."""
+
+    reasons: list[str] = []
+
+    expected_sources = case.get("expected_sources")
+
+    if expected_sources is None:
+        expected_source = case.get("expected_source")
+        expected_sources = (
+            [expected_source]
+            if expected_source
+            else []
+        )
+
+    # Source-level failure
+    if not metrics["source_hit"]:
+        if len(expected_sources) > 1:
+            reasons.append("CROSS_SOURCE_MISS")
+        else:
+            reasons.append("SOURCE_MISS")
+
+    # Section-level failure
+    if (
+        case.get("expected_section")
+        and not metrics["section_hit"]
+    ):
+        reasons.append("SECTION_MISS")
+
+    # Expected content missing
+    if not metrics["content_hit"]:
+        reasons.append("CONTENT_MISS")
+
+    # Top-K succeeded, but expected source was not rank 1
+    if (
+        not metrics["top1_source_hit"]
+        and metrics["source_hit"]
+    ):
+        reasons.append("TOP1_RANKING_MISS")
+
+    return reasons
+
 
 def print_case_results(
     case: dict[str, Any],
     results: list[dict[str, Any]],
     metrics: dict[str, Any] | None,
+    top_k: int,
 ) -> None:
     """Print readable evaluation output for one case."""
 
@@ -180,15 +246,15 @@ def print_case_results(
             f"{metrics['top1_source_hit']}"
         )
         print(
-            f"  Top-{TOP_K} source hit: "
+            f"  Top-{top_k} source hit: "
             f"{metrics['source_hit']}"
         )
         print(
-            f"  Top-{TOP_K} section hit: "
+            f"  Top-{top_k} section hit: "
             f"{metrics['section_hit']}"
         )
         print(
-            f"  Top-{TOP_K} content hit: "
+            f"  Top-{top_k} content hit: "
             f"{metrics['content_hit']}"
         )
     else:
@@ -208,6 +274,9 @@ def print_case_results(
 
 
 def main() -> None:
+    args = parse_args()
+    top_k = args.top_k
+
     cases = load_cases(
         DEFAULT_CASES_PATH
     )
@@ -228,6 +297,10 @@ def main() -> None:
     section_hits = 0
     content_hits = 0
 
+    failure_results: list[
+        dict[str, Any]
+    ] = []
+
     unsupported_results: list[
         dict[str, Any]
     ] = []
@@ -235,7 +308,7 @@ def main() -> None:
     for case in cases:
         results = retriever.search(
             query=case["question"],
-            top_k=TOP_K,
+            top_k=top_k,
         )
 
         if case["answerable"]:
@@ -246,15 +319,31 @@ def main() -> None:
                 results,
             )
 
+            failure_reasons = get_failure_reasons(
+                case,
+                metrics,
+            )
+
+            if failure_reasons:
+                failure_results.append(
+                    {
+                        "id": case["id"],
+                        "reasons": failure_reasons,
+                    }
+                )
+
             top1_source_hits += int(
                 metrics["top1_source_hit"]
             )
+
             source_hits += int(
                 metrics["source_hit"]
             )
+
             section_hits += int(
                 metrics["section_hit"]
             )
+
             content_hits += int(
                 metrics["content_hit"]
             )
@@ -263,6 +352,7 @@ def main() -> None:
                 case,
                 results,
                 metrics,
+                top_k,
             )
 
         else:
@@ -286,6 +376,7 @@ def main() -> None:
                 case,
                 results,
                 metrics=None,
+                top_k=top_k,
             )
 
     print()
@@ -296,46 +387,66 @@ def main() -> None:
     print("=" * 100)
 
     print(
-        f"Total cases:              "
+        f"Top-K:                   "
+        f"{top_k}"
+    )
+
+    print(
+        f"Total cases:             "
         f"{len(cases)}"
     )
+
     print(
-        f"Answerable cases:         "
+        f"Answerable cases:        "
         f"{answerable_count}"
     )
+
     print(
-        f"Unsupported cases:        "
+        f"Unsupported cases:       "
         f"{unsupported_count}"
     )
 
     if answerable_count:
         print(
-            f"Top-1 source accuracy:    "
+            f"Top-1 source accuracy:   "
             f"{top1_source_hits}/{answerable_count} "
             f"= "
             f"{top1_source_hits / answerable_count:.1%}"
         )
 
         print(
-            f"Top-{TOP_K} source hit rate:   "
+            f"Top-{top_k} source hit rate:  "
             f"{source_hits}/{answerable_count} "
             f"= "
             f"{source_hits / answerable_count:.1%}"
         )
 
         print(
-            f"Top-{TOP_K} section hit rate:  "
+            f"Top-{top_k} section hit rate: "
             f"{section_hits}/{answerable_count} "
             f"= "
             f"{section_hits / answerable_count:.1%}"
         )
 
         print(
-            f"Top-{TOP_K} content hit rate:  "
+            f"Top-{top_k} content hit rate: "
             f"{content_hits}/{answerable_count} "
             f"= "
             f"{content_hits / answerable_count:.1%}"
         )
+
+    if failure_results:
+        print("\nFailure / diagnostic report:")
+
+        for item in failure_results:
+            reasons_text = ", ".join(
+                item["reasons"]
+            )
+
+            print(
+                f"  {item['id']}: "
+                f"{reasons_text}"
+            )
 
     if unsupported_results:
         print("\nUnsupported cases:")
@@ -351,7 +462,6 @@ def main() -> None:
                 f"  {item['id']}: "
                 f"max_score={score_text}"
             )
-
 
 if __name__ == "__main__":
     main()
