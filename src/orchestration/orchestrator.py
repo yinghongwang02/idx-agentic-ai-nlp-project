@@ -369,26 +369,18 @@ class Orchestrator:
         route = state["route"]
 
         if route == "search":
-            final_response = (
-                self._stringify(
-                    state.get(
-                        "search_result"
-                    )
-                )
+            final_response = self._format_search_result(
+                state.get("search_result")
             )
 
         elif route == "market":
-            final_response = (
-                self._stringify(
-                    state.get(
-                        "market_result"
-                    )
-                )
+            final_response = self._format_market_result(
+                state.get("market_result")
             )
 
         elif route == "recommend":
             final_response = (
-                self._stringify(
+                self._format_recommendation_result(
                     state.get(
                         "recommendation_result"
                     )
@@ -397,7 +389,7 @@ class Orchestrator:
 
         elif route == "knowledge":
             final_response = (
-                self._stringify(
+                self._format_knowledge_result(
                     state.get(
                         "knowledge_result"
                     )
@@ -452,6 +444,278 @@ class Orchestrator:
 
         return str(value)
 
+    def _format_search_result(
+        self,
+        value: Any,
+    ) -> str:
+        """
+        Convert the structured PropertySearchAdapter output into
+        user-facing text while preserving the structured result in state.
+        """
+
+        if value is None:
+            return ""
+
+        if isinstance(value, str):
+            return value
+
+        if isinstance(value, dict):
+            final_response = value.get(
+                "final_response"
+            )
+
+            if isinstance(
+                final_response,
+                str,
+            ):
+                return final_response
+
+        return self._stringify(value)
+
+
+    def _format_knowledge_result(
+        self,
+        value: Any,
+    ) -> str:
+        """
+        Display only the grounded answer.
+
+        Sources and retrieval evidence remain available in
+        state["knowledge_result"].
+        """
+
+        if value is None:
+            return ""
+
+        if isinstance(value, str):
+            return value
+
+        if isinstance(value, dict):
+            answer = value.get("answer")
+
+            if isinstance(answer, str):
+                return answer
+
+        return self._stringify(value)
+
+
+    def _format_market_result(
+        self,
+        value: Any,
+    ) -> str:
+        """
+        Convert MarketSummary into a concise user-facing summary.
+        """
+
+        if value is None:
+            return ""
+
+        if isinstance(value, str):
+            return value
+
+        # Preserve compatibility with lightweight test doubles.
+        if isinstance(value, dict):
+            return self._stringify(value)
+
+        city = getattr(
+            value,
+            "city",
+            None,
+        )
+
+        comp_count = getattr(
+            value,
+            "comp_count",
+            None,
+        )
+
+        median_close_price = getattr(
+            value,
+            "median_close_price",
+            None,
+        )
+
+        average_dom = getattr(
+            value,
+            "average_days_on_market",
+            None,
+        )
+
+        sale_to_list = getattr(
+            value,
+            "average_sale_to_list_ratio",
+            None,
+        )
+
+        average_ppsf = getattr(
+            value,
+            "average_price_per_sqft",
+            None,
+        )
+
+        trend = getattr(
+            value,
+            "recent_trend",
+            None,
+        )
+
+        if city is None:
+            return self._stringify(value)
+
+        lines = [
+            f"Market summary for {city}:",
+        ]
+
+        if comp_count is not None:
+            lines.append(
+                f"- Recent comparable sales: "
+                f"{comp_count}"
+            )
+
+        if median_close_price is not None:
+            lines.append(
+                "- Median close price: "
+                f"${median_close_price:,.0f}"
+            )
+
+        if average_dom is not None:
+            lines.append(
+                "- Average days on market: "
+                f"{average_dom:.1f}"
+            )
+
+        if sale_to_list is not None:
+            lines.append(
+                "- Average sale-to-list ratio: "
+                f"{sale_to_list:.1%}"
+            )
+
+        if average_ppsf is not None:
+            lines.append(
+                "- Average price per square foot: "
+                f"${average_ppsf:,.0f}"
+            )
+
+        if trend is not None:
+            direction = getattr(
+                trend,
+                "direction",
+                None,
+            )
+
+            price_change = getattr(
+                trend,
+                "median_price_change_pct",
+                None,
+            )
+
+            if direction:
+                lines.append(
+                    f"- Recent market direction: "
+                    f"{direction}"
+                )
+
+            if price_change is not None:
+                lines.append(
+                    "- Recent median price change: "
+                    f"{price_change:+.1%}"
+                )
+
+        return "\n".join(lines)
+
+
+    def _format_recommendation_result(
+        self,
+        value: Any,
+    ) -> str:
+        """
+        Convert similar-home recommendation results into a concise list.
+
+        Full similarity and sold-comp evidence remain available in
+        state["recommendation_result"].
+        """
+
+        if value is None:
+            return ""
+
+        if isinstance(value, str):
+            return value
+
+        # Preserve compatibility with existing unit-test doubles.
+        if isinstance(value, dict):
+            return self._stringify(value)
+
+        if not isinstance(value, list):
+            return self._stringify(value)
+
+        if not value:
+            return (
+                "No similar-home recommendations "
+                "were found."
+            )
+
+        lines = [
+            "Similar-home recommendations:",
+        ]
+
+        for rank, result in enumerate(
+            value,
+            start=1,
+        ):
+            if not isinstance(result, dict):
+                lines.append(
+                    f"{rank}. {result}"
+                )
+                continue
+
+            listing = result.get("listing")
+
+            if listing is None:
+                lines.append(
+                    f"{rank}. Recommendation available"
+                )
+                continue
+
+            address = getattr(
+                listing,
+                "unparsed_address",
+                None,
+            ) or "Address unavailable"
+
+            city = getattr(
+                listing,
+                "city",
+                None,
+            )
+
+            price = getattr(
+                listing,
+                "list_price",
+                None,
+            )
+
+            hybrid_score = result.get(
+                "hybrid_similarity_score"
+            )
+
+            summary = f"{rank}. {address}"
+
+            if city:
+                summary += f", {city}"
+
+            if price is not None:
+                summary += f" — ${price:,.0f}"
+
+            if hybrid_score is not None:
+                summary += (
+                    f" — similarity "
+                    f"{hybrid_score:.2f}/100"
+                )
+
+            lines.append(summary)
+
+        return "\n".join(lines)
+
     def _merge_mixed_response(
         self,
         state: OrchestratorState,
@@ -472,9 +736,11 @@ class Orchestrator:
         )
 
         if "search" in routes:
-            search_text = self._stringify(
-                state.get(
-                    "search_result"
+            search_text = (
+                self._format_search_result(
+                    state.get(
+                        "search_result"
+                    )
                 )
             )
 
@@ -485,9 +751,11 @@ class Orchestrator:
                 )
 
         if "market" in routes:
-            market_text = self._stringify(
-                state.get(
-                    "market_result"
+            market_text = (
+                self._format_market_result(
+                    state.get(
+                        "market_result"
+                    )
                 )
             )
 
@@ -499,7 +767,7 @@ class Orchestrator:
 
         if "recommend" in routes:
             recommendation_text = (
-                self._stringify(
+                self._format_recommendation_result(
                     state.get(
                         "recommendation_result"
                     )
@@ -513,9 +781,11 @@ class Orchestrator:
                 )
 
         if "knowledge" in routes:
-            knowledge_text = self._stringify(
-                state.get(
-                    "knowledge_result"
+            knowledge_text = (
+                self._format_knowledge_result(
+                    state.get(
+                        "knowledge_result"
+                    )
                 )
             )
 
