@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 
+from src.schemas.market_trend_schema import MarketTrend
+
 
 class MarketSummary(BaseModel):
     """
@@ -15,3 +17,5 @@ class MarketSummary(BaseModel):
     average_days_on_market: float | None = None
     average_sale_to_list_ratio: float | None = None
     average_price_per_sqft: float | None = None
+
+    recent_trend: MarketTrend | None = None

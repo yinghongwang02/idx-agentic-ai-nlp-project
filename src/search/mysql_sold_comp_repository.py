@@ -46,6 +46,22 @@ class MySQLSoldCompRepository(SoldCompRepository):
             months=months
         )
 
+        return self.find_comps_by_date_range(
+            city=city,
+            start_date=start_date,
+            end_date=end_date,
+            postal_code=postal_code,
+            limit=limit,
+        )
+
+    def find_comps_by_date_range(
+        self,
+        city: str,
+        start_date: date,
+        end_date: date,
+        postal_code: str | None = None,
+        limit: int = 500,
+    ) -> list[SoldCompSchema]:
         sql_parts = [
             """
             SELECT
@@ -74,8 +90,8 @@ class MySQLSoldCompRepository(SoldCompRepository):
 
         params: list[Any] = [
             city,
-            start_date,
-            end_date,
+            start_date.isoformat(),
+            end_date.isoformat(),
         ]
 
         if postal_code:
@@ -87,6 +103,7 @@ class MySQLSoldCompRepository(SoldCompRepository):
         sql_parts.append(
             "ORDER BY CloseDate DESC"
         )
+
         sql_parts.append(
             "LIMIT %s"
         )
@@ -96,7 +113,7 @@ class MySQLSoldCompRepository(SoldCompRepository):
             sql="\n".join(sql_parts),
             params=params,
         )
-
+    
     def find_similar_comps(
         self,
         listing: ListingSchema,
@@ -217,8 +234,8 @@ class MySQLSoldCompRepository(SoldCompRepository):
         ]
 
         params: list[Any] = [
-            start_date,
-            end_date,
+            start_date.isoformat(),
+            end_date.isoformat(),
         ]
 
         if listing.city:

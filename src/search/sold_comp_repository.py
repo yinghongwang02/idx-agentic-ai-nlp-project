@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from src.schemas.comparable_result_schema import ComparableResult
 from src.schemas.sold_comp_schema import SoldCompSchema
 from src.schemas.listing_schema import ListingSchema
+from datetime import date
 
 class SoldCompRepository(ABC):
     """
@@ -38,6 +39,39 @@ class SoldCompRepository(ABC):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def find_comps_by_date_range(
+        self,
+        city: str,
+        start_date: date,
+        end_date: date,
+        postal_code: str | None = None,
+        limit: int = 500,
+    ) -> list[SoldCompSchema]:
+        """
+        Return sold comparable properties within an explicit date range.
+
+        Args:
+            city:
+                Required city used as the primary market filter.
+
+            start_date:
+                Inclusive start date.
+
+            end_date:
+                Inclusive end date.
+
+            postal_code:
+                Optional ZIP code for a narrower market filter.
+
+            limit:
+                Maximum number of sold records returned.
+
+        Returns:
+            A list of normalized SoldCompSchema objects.
+        """
+        raise NotImplementedError
+    
     @abstractmethod
     def find_similar_comps(
         self,
