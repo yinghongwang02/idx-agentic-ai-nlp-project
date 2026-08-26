@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+import operator
+from typing import Annotated, Any, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -86,7 +87,10 @@ class OrchestratorState(TypedDict, total=False):
     # Orchestration metadata
     # -----------------------------------------------------------------
 
-    agents_invoked: list[str]
+    agents_invoked: Annotated[
+        list[str],
+        operator.add,
+    ]
 
     # -----------------------------------------------------------------
     # Final response
@@ -99,4 +103,8 @@ class OrchestratorState(TypedDict, total=False):
     # -----------------------------------------------------------------
 
     latency_ms: float
-    error: str | None
+
+    errors: Annotated[
+        list[str],
+        operator.add,
+    ]
