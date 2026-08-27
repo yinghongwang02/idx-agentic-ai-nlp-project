@@ -358,3 +358,143 @@ def test_recommend_rejects_empty_listing_id():
     )
 
     assert response.status_code == 422
+
+
+def test_chat_logs_success(
+    caplog,
+):
+    client, _ = make_client()
+
+    with caplog.at_level(
+        "INFO",
+        logger="idx.api",
+    ):
+        response = client.post(
+            "/chat",
+            json={
+                "query": (
+                    "What does DOM mean?"
+                ),
+                "session_id": (
+                    "logging-test"
+                ),
+            },
+        )
+
+    assert response.status_code == 200
+
+    assert (
+        "orchestration_completed"
+        in caplog.text
+    )
+
+    assert (
+        "route=knowledge"
+        in caplog.text
+    )
+
+    assert (
+        "agents=knowledge"
+        in caplog.text
+    )
+
+    assert (
+        "errors=0"
+        in caplog.text
+    )
+
+    assert (
+        "session_id=logging-test"
+        in caplog.text
+    )
+
+
+def test_chat_logs_partial_failure_warning(
+    caplog,
+):
+    class PartialFailureOrchestrator:
+        def invoke(
+            self,
+            user_query: str,
+            *,
+            session_id: str | None = None,
+        ) -> dict:
+            return {
+                "user_query": user_query,
+                "session_id": session_id,
+                "route": "mixed",
+                "routes": [
+                    "search",
+                    "market",
+                ],
+                "route_reason": (
+                    "Search and market request."
+                ),
+                "agents_invoked": [
+                    "search",
+                    "market",
+                ],
+                "final_response": (
+                    "Property Search:\n"
+                    "Found homes.\n\n"
+                    "Partial errors:\n"
+                    "- market failed"
+                ),
+                "errors": [
+                    "market: RuntimeError: failed"
+                ],
+            }
+
+    app.dependency_overrides[
+        get_orchestrator
+    ] = lambda: (
+        PartialFailureOrchestrator()
+    )
+
+    client = TestClient(app)
+
+    with caplog.at_level(
+        "WARNING",
+        logger="idx.api",
+    ):
+        response = client.post(
+            "/chat",
+            json={
+                "query": (
+                    "Find homes and analyze "
+                    "the market."
+                )
+            },
+        )
+
+    assert response.status_code == 200
+
+    assert response.json()[
+        "errors"
+    ] == [
+        "market: RuntimeError: failed"
+    ]
+
+    assert (
+        "orchestration_completed"
+        in caplog.text
+    )
+
+    assert (
+        "route=mixed"
+        in caplog.text
+    )
+
+    assert (
+        "errors=1"
+        in caplog.text
+    )
+
+    warning_records = [
+        record
+        for record in caplog.records
+        if record.name == "idx.api"
+        and record.levelname == "WARNING"
+    ]
+
+    assert warning_records

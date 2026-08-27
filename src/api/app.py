@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
+from time import perf_counter
 
 from fastapi import (
     Depends,
@@ -25,6 +27,24 @@ from src.orchestration.orchestrator import (
 )
 from src.schemas.orchestrator_state_schema import (
     OrchestratorState,
+)
+
+logging.basicConfig(
+    level=getattr(
+        logging,
+        settings.log_level.upper(),
+        logging.INFO,
+    ),
+    format=(
+        "%(asctime)s "
+        "%(levelname)s "
+        "%(name)s "
+        "%(message)s"
+    ),
+)
+
+logger = logging.getLogger(
+    "idx.api"
 )
 
 
@@ -109,20 +129,76 @@ def invoke_orchestrator(
     *,
     session_id: str | None = None,
 ) -> OrchestrationResponse:
+    """
+    Execute one orchestrator request and emit lightweight
+    end-to-end observability.
+
+    Capability-level partial failures remain successful HTTP
+    responses and are reported through the errors field.
+    """
+
+    started_at = perf_counter()
+
     try:
         result = orchestrator.invoke(
             query,
             session_id=session_id,
         )
 
-        return build_response(
+        response = build_response(
             result
         )
+
+        latency_ms = (
+            perf_counter() - started_at
+        ) * 1000.0
+
+        log_method = (
+            logger.warning
+            if response.errors
+            else logger.info
+        )
+
+        log_method(
+            (
+                "orchestration_completed "
+                "route=%s "
+                "agents=%s "
+                "latency_ms=%.2f "
+                "errors=%d "
+                "session_id=%s"
+            ),
+            response.route,
+            ",".join(
+                response.agents_invoked
+            ),
+            latency_ms,
+            len(response.errors),
+            session_id or "-",
+        )
+
+        return response
 
     except HTTPException:
         raise
 
     except Exception as exc:
+        latency_ms = (
+            perf_counter() - started_at
+        ) * 1000.0
+
+        logger.exception(
+            (
+                "orchestration_failed "
+                "latency_ms=%.2f "
+                "session_id=%s "
+                "error_type=%s"
+            ),
+            latency_ms,
+            session_id or "-",
+            type(exc).__name__,
+        )
+
         raise HTTPException(
             status_code=(
                 status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -132,7 +208,6 @@ def invoke_orchestrator(
                 f"{type(exc).__name__}: {exc}"
             ),
         ) from exc
-
 
 # =====================================================================
 # Health
