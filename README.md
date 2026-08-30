@@ -31,31 +31,35 @@ The system supports four complementary user workflows:
 
 ## Key Engineering Highlights
 
--   **LangGraph real-estate copilot** with natural-language intent parsing,
-    Fair Housing guardrails, multi-turn search memory, and explainable Top-5
-    recommendations.
--   **Two-level parallel property analysis** with bounded candidate execution;
-    benchmarked at **2.21× speedup** and **54.7% lower median
-    candidate-analysis latency** while preserving deterministic Top-5 output.
--   **MySQL-backed structured retrieval** over active listings and recent sold
-    comparables, with market, comparable-value, negotiation, and preference
-    signals.
--   **52,794-listing semantic retrieval stack** using OpenAI embeddings, FAISS,
-    checkpoint/resume indexing, and hybrid hard-constraint + semantic search.
--   **Hybrid similar-home recommendation** combining property-attribute and
-    semantic similarity, followed by sold-comparable PPSF/value validation.
--   **Document-aware RAG** with source/section metadata, Top-6 retrieval, grounded
-    generation, and a benchmark reaching **100.0% expected-source hit rate**
-    across 18 answerable evaluation cases.
+-   **LangGraph real-estate copilot** with natural-language intent
+    parsing, Fair Housing guardrails, multi-turn search memory, and
+    explainable Top-5 recommendations.
+-   **Two-level parallel property analysis** with bounded candidate
+    execution; benchmarked at **2.21× speedup** and **54.7% lower median
+    candidate-analysis latency** while preserving deterministic Top-5
+    output.
+-   **MySQL-backed structured retrieval** over active listings and
+    recent sold comparables, with market, comparable-value, negotiation,
+    and preference signals.
+-   **52,794-listing semantic retrieval stack** using OpenAI embeddings,
+    FAISS, checkpoint/resume indexing, and hybrid hard-constraint +
+    semantic search.
+-   **Hybrid similar-home recommendation** combining property-attribute
+    and semantic similarity, followed by sold-comparable PPSF/value
+    validation.
+-   **Document-aware RAG** with source/section metadata, Top-6
+    retrieval, grounded generation, and a benchmark reaching **100.0%
+    expected-source hit rate** across 18 answerable evaluation cases.
 -   **Unified Agentic Copilot** routing `search`, `market`, `recommend`,
-    `knowledge`, and `mixed` requests, including LangGraph search + market
-    fan-out/fan-in and partial-failure preservation.
--   **FastAPI service layer** exposing `/health`, `/search`, `/recommend`, and
-    `/chat`, with route/agent/latency/error observability.
--   **Pluggable session-memory boundary** through a lightweight `MemoryStore`
-    abstraction for future persistent backends.
--   **215 passing automated tests** across the full repository, plus real
-    MySQL/OpenAI/FAISS integration smoke tests.
+    `knowledge`, and `mixed` requests, including LangGraph search +
+    market fan-out/fan-in and partial-failure preservation.
+-   **FastAPI service layer** exposing `/health`, `/search`,
+    `/recommend`, and `/chat`, with route/agent/latency/error
+    observability.
+-   **Pluggable session-memory boundary** through a lightweight
+    `MemoryStore` abstraction for future persistent backends.
+-   **215 passing automated tests** across the full repository, plus
+    real MySQL/OpenAI/FAISS integration smoke tests.
 
 ## Core MVP Performance --- Week 6
 
@@ -64,18 +68,18 @@ property analysis into reusable LangGraph subgraphs and adding bounded
 parallel execution, deterministic ranking, configurable scoring,
 regression validation, and quantitative performance benchmarking.
 
-  Area                                     Result
-  ---------------------------------------- -------------------------------------------
-  Candidate pool                           Up to 50 listings
-  Parallel execution                       Maximum 4 candidate analyses concurrently
-  Sequential median latency                50.60 s
-  Parallel median latency                  22.92 s
-  Speedup                                  2.21×
-  Median latency reduction                 54.7%
-  Successful candidate analyses            50 / 50
-  Candidate errors                         0
-  Sequential/parallel output consistency   PASS
-  Automated tests                          111 passed
+| Area | Result |
+| --- | --- |
+| Candidate pool | Up to 50 listings |
+| Parallel execution | Maximum 4 candidate analyses concurrently |
+| Sequential median latency | 50.60 s |
+| Parallel median latency | 22.92 s |
+| Speedup | 2.21× |
+| Median latency reduction | 54.7% |
+| Successful candidate analyses | 50 / 50 |
+| Candidate errors | 0 |
+| Sequential/parallel output consistency | PASS |
+| Automated tests | 111 passed |
 
 The latency benchmark measures the **candidate property-analysis
 stage**, not the full Streamlit request lifecycle. Both execution modes
@@ -85,7 +89,7 @@ recommendation outputs were checked after every pair.
 
 Raw benchmark results are available in:
 
-``` text
+```text
 artifacts/benchmarks/candidate_parallel_baseline.csv
 ```
 
@@ -99,20 +103,14 @@ the existing property-analysis subgraph.
 
 The system builds semantic representations for the active MLS corpus:
 
-``` text
-MLS Active Listings
-        ↓
-Canonical Listing Text
-        ↓
-EmbeddingProvider
-        ↓
-OpenAI Embeddings
-        ↓
-L2 Normalization
-        ↓
-FAISS IndexFlatIP
-        ↓
-Cosine-Similarity Retrieval
+```mermaid
+flowchart TD
+    A[MLS Active Listings] --> B[Canonical Listing Text]
+    B --> C[EmbeddingProvider]
+    C --> D[OpenAI Embeddings]
+    D --> E[L2 Normalization]
+    E --> F[FAISS IndexFlatIP]
+    F --> G[Cosine-Similarity Retrieval]
 ```
 
 The embedding builder supports batched generation and checkpoint/resume
@@ -131,22 +129,15 @@ or property type.
 The hybrid retrieval path therefore separates eligibility from
 preference ranking:
 
-``` text
-Natural-Language Request
-        ↓
-Structured MLS Constraints
-        ↓
-MySQL Candidate Retrieval
-        ↓
-Eligible Candidate Set
-        ↓
-Semantic Preference Embedding
-        ↓
-Embedding Similarity
-        ↓
-Semantic Reranking
-        ↓
-Top-K Results
+```mermaid
+flowchart TD
+    A[Natural-Language Request] --> B[Structured MLS Constraints]
+    B --> C[MySQL Candidate Retrieval]
+    C --> D[Eligible Candidate Set]
+    D --> E[Semantic Preference Embedding]
+    E --> F[Embedding Similarity]
+    F --> G[Semantic Reranking]
+    G --> H[Top-K Results]
 ```
 
 Structured constraints determine which listings are eligible, while
@@ -158,12 +149,12 @@ or lifestyle characteristics.
 
 A lightweight retrieval benchmark compares four retrieval strategies:
 
-  Mode         Hard constraints   Soft semantic preferences
-  ------------ ------------------ ---------------------------
-  Structured   Yes                Limited
-  Keyword      Yes                Exact lexical matching
-  Semantic     No                 Strong
-  Hybrid       Yes                Strong
+| Mode | Hard constraints | Soft semantic preferences |
+| --- | --- | --- |
+| Structured | Yes | Limited |
+| Keyword | Yes | Exact lexical matching |
+| Semantic | No | Strong |
+| Hybrid | Yes | Strong |
 
 Full-corpus evaluation showed the expected trade-off: pure semantic
 retrieval captured qualitative intent but did not enforce structured MLS
@@ -176,7 +167,7 @@ coverage.
 
 Raw evaluation output:
 
-``` text
+```text
 artifacts/benchmarks/retrieval_comparison_full.csv
 ```
 
@@ -192,28 +183,16 @@ rules, computes property-attribute and semantic similarity across the
 full active-listing embedding corpus, and returns the highest-ranked
 compatible listings.
 
-``` text
-Target Listing
-        ↓
-Full Embedded Active-Listing Corpus
-        ↓
-Property-Type Compatibility
-        ↓
-Compatible Candidate Listings
-        ↓
-┌──────────────────────────┐
-│ Property-Attribute       │
-│ Similarity        max 60 │
-└──────────────────────────┘
-             +
-┌──────────────────────────┐
-│ Semantic Similarity      │
-│ cosine similarity max 40 │
-└──────────────────────────┘
-        ↓
-Hybrid Similarity Score
-        ↓
-Top-K Similar Listings
+```mermaid
+flowchart TD
+    A[Target Listing] --> B[Full Embedded Active-Listing Corpus]
+    B --> C[Property-Type Compatibility]
+    C --> D[Compatible Candidate Listings]
+    D --> E[Property-Attribute Similarity<br/>max 60]
+    D --> F[Semantic Similarity<br/>cosine similarity max 40]
+    E --> G[Hybrid Similarity Score]
+    F --> G
+    G --> H[Top-K Similar Listings]
 ```
 
 The property-attribute component emphasizes measurable property
@@ -233,32 +212,21 @@ questions. After the Top-K similar active listings are selected, each
 recommendation is independently validated against recent sold
 comparables using the existing market-analysis components.
 
-``` text
-Top-K Similar Listing
-        ↓
-MarketAgent
-        ↓
-Recent Sold Comparables
-        ↓
-ComparableValueAgent
-        ↓
-Asking PPSF vs. Comparable Median PPSF
-        ↓
-Comparable Value + Evidence Quality
+```mermaid
+flowchart TD
+    A[Top-K Similar Listing] --> B[MarketAgent]
+    B --> C[Recent Sold Comparables]
+    C --> D[ComparableValueAgent]
+    D --> E[Asking PPSF vs. Comparable Median PPSF]
+    E --> F[Comparable Value + Evidence Quality]
 ```
 
 The validation layer reports two distinct signals:
 
-  ---------------------------------------------------------------------
-  Signal                             Meaning
-  ---------------------------------- ----------------------------------
-  Comparable Value                   How the asking price compares with
-                                     recent sold-comparable evidence
-
-  Evidence Quality                   How strongly the available
-                                     comparable set supports that value
-                                     conclusion
-  ---------------------------------------------------------------------
+| Signal | Meaning |
+| --- | --- |
+| Comparable Value | How the asking price compares with recent sold-comparable evidence |
+| Evidence Quality | How strongly the available comparable set supports that value conclusion |
 
 Comparable evidence quality reflects factors such as match strictness,
 comparable count, and usable PPSF coverage. This keeps recommendation
@@ -296,18 +264,13 @@ These documents are used as project knowledge sources; the
 project-maintained MLS mapping is not presented as official IDX MLS
 documentation.
 
-``` text
-Knowledge Documents
-    ↓
-Chunk + Source/Section Metadata
-    ↓
-Embeddings + FAISS
-    ↓
-Top-K Semantic Retrieval
-    ↓
-Grounded LLM Generation
-    ↓
-Answer + Retrieved Sources
+```mermaid
+flowchart TD
+    A[Knowledge Documents] --> B[Chunk + Source/Section Metadata]
+    B --> C[Embeddings + FAISS]
+    C --> D[Top-K Semantic Retrieval]
+    D --> E[Grounded LLM Generation]
+    E --> F[Answer + Retrieved Sources]
 ```
 
 `mls_field_mapping.md` is project-maintained documentation and is not
@@ -324,12 +287,12 @@ diagnostics.
 
 A Top-K sensitivity check produced:
 
-  Metric                        Top-4        Top-6
-  --------------------------- ------- ------------
-  Top-1 source accuracy         88.9%        88.9%
-  Expected-source hit rate      94.4%   **100.0%**
-  Expected-section hit rate     83.3%    **88.9%**
-  Expected-content hit rate     94.4%        94.4%
+| Metric | Top-4 | Top-6 |
+| --- | ---: | ---: |
+| Top-1 source accuracy | 88.9% | 88.9% |
+| Expected-source hit rate | 94.4% | **100.0%** |
+| Expected-section hit rate | 83.3% | **88.9%** |
+| Expected-content hit rate | 94.4% | 94.4% |
 
 Top-6 is the current default because it recovered the missing mapping
 document for the cross-document list-to-close case. The unchanged Top-1
@@ -347,7 +310,7 @@ and Streamlit Knowledge Assistant. The evaluator keeps `--top-k`
 configurable so the sensitivity result is reproducible without changing
 code:
 
-``` bash
+```bash
 # Current/default evaluation depth
 python -m src.dev_evaluate_knowledge_retrieval --top-k 6
 
@@ -413,25 +376,14 @@ while `Find homes in Irvine under $1.5M` routes to `search`.
 Mixed search-and-market requests use real graph fan-out/fan-in rather
 than calling the two capabilities sequentially inside one node:
 
-``` text
-                         START
-                           |
-                           v
-                         router
-                           |
-             +-------------+-------------+
-             |                           |
-             v                           v
-           search                      market
-             \                           /
-              \                         /
-               +----------+------------+
-                          |
-                          v
-                         merge
-                          |
-                          v
-                         END
+```mermaid
+flowchart TD
+    START([START]) --> ROUTER[router]
+    ROUTER --> SEARCH[search]
+    ROUTER --> MARKET[market]
+    SEARCH --> MERGE[merge]
+    MARKET --> MERGE
+    MERGE --> END([END])
 ```
 
 Parallel branches can both update orchestration metadata such as
@@ -450,16 +402,17 @@ return useful output.
 The unified graph talks to four thin adapters instead of importing
 UI-specific or capability-specific behavior into the orchestrator:
 
-``` text
-Unified Orchestrator
-        |
-        +-- PropertySearchAdapter
-        +-- MarketAdapter
-        +-- RecommendationAdapter
-        +-- KnowledgeAdapter
-        |
-        v
-Existing Week 3--8 capabilities
+```mermaid
+flowchart TD
+    O[Unified Orchestrator]
+    O --> S[PropertySearchAdapter]
+    O --> M[MarketAdapter]
+    O --> R[RecommendationAdapter]
+    O --> K[KnowledgeAdapter]
+    S --> C[Existing Week 3--8 capabilities]
+    M --> C
+    R --> C
+    K --> C
 ```
 
 This keeps the Week 3--8 implementations reusable and independently
@@ -478,12 +431,12 @@ dispatched routes, invoked agents, route reason, errors, and session ID.
 Week 9 also exposes the orchestration layer through a lightweight
 FastAPI service:
 
-  Endpoint            Purpose
-  ------------------- -----------------------------------------
-  `GET /health`       Service health/environment check
-  `POST /search`      Property-search entry point
-  `POST /recommend`   Similar-home recommendation entry point
-  `POST /chat`        Unified router/orchestrator entry point
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /health` | Service health/environment check |
+| `POST /search` | Property-search entry point |
+| `POST /recommend` | Similar-home recommendation entry point |
+| `POST /chat` | Unified router/orchestrator entry point |
 
 The API and Streamlit UI are complementary interfaces over the same core
 application composition. Streamlit remains the rich interactive demo,
@@ -499,7 +452,7 @@ agents, final response, structured errors, and session ID.
 API orchestration completion is logged with operational metadata
 including:
 
-``` text
+```text
 route
 agents_invoked
 latency_ms
@@ -536,22 +489,18 @@ path, and FastAPI `/chat` endpoint.
 
 A representative API smoke request:
 
-``` text
-What does DOM mean in real estate?
-        |
-        v
-route = knowledge
-agents_invoked = [knowledge]
-        |
-        v
-grounded unified response
+```mermaid
+flowchart TD
+    A[What does DOM mean in real estate?] --> B[route = knowledge]
+    B --> C[agents_invoked = knowledge]
+    C --> D[grounded unified response]
 ```
 
 ## Architecture
 
 ### Core Property-Search Workflow
 
-``` mermaid
+```mermaid
 flowchart TD
     U[User Query] --> QC[Query Compliance]
 
@@ -584,7 +533,7 @@ flowchart TD
 
 Each listing is analyzed through a reusable LangGraph subgraph:
 
-``` mermaid
+```mermaid
 flowchart TD
     START([Listing + PropertyIntent])
 
@@ -620,7 +569,7 @@ Week 7 adds retrieval and similar-home recommendation capabilities
 alongside the existing LangGraph property-search workflow rather than
 replacing the reusable property-analysis subgraph.
 
-``` mermaid
+```mermaid
 flowchart TD
     TARGET[Target Listing] --> GUARD[Property-Type Compatibility]
     GUARD --> STRUCT[Property-Attribute Similarity]
@@ -648,7 +597,7 @@ avoiding a second overlapping market-analysis path.
 The Week 9 layer coordinates existing capabilities without replacing
 their internal workflows:
 
-``` mermaid
+```mermaid
 flowchart TD
     START([User Query]) --> ROUTER[Unified Router]
 
@@ -680,7 +629,7 @@ fan-in.
 
 The parent workflow supports both execution modes:
 
-``` text
+```text
 Sequential mode
 Candidate 1 → Candidate 2 → ... → Candidate 50
 
@@ -690,7 +639,7 @@ Up to 4 candidate subgraphs execute concurrently
 
 A candidate failure is recorded as:
 
-``` text
+```text
 {
     listing_key: ...,
     error: ...
@@ -715,14 +664,14 @@ The performance harness:
 
 Measured runs:
 
-``` text
+```text
 Sequential: 52.13 s, 50.60 s, 50.59 s
 Parallel:   23.12 s, 22.92 s, 22.36 s
 ```
 
 Result:
 
-``` text
+```text
 50.60 s → 22.92 s
 54.7% lower median candidate-analysis latency
 2.21× speedup
@@ -836,7 +785,7 @@ FAISS, NumPy, Pydantic, MySQL, FastAPI, Uvicorn, Streamlit, Pytest, and
 
 ## Local Setup
 
-``` bash
+```bash
 python -m venv .venv
 # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
@@ -852,7 +801,7 @@ committed.
 
 ## Testing and Validation
 
-``` bash
+```bash
 pytest -v
 python -m src.dev_evaluate_retrieval
 python -m src.dev_evaluate_knowledge_retrieval              # default Top-6
@@ -865,12 +814,11 @@ python -m src.dev_benchmark_candidate_parallel
 python -m pytest tests/test_orchestration_capabilities.py tests/test_orchestrator.py tests/test_orchestration_adapters.py tests/test_orchestration_composition.py tests/test_api.py tests/test_memory_store.py -v
 ```
 
-The Week 8 README baseline recorded **144 passing tests**. Since then,
-Week 9 added orchestration, adapter, composition, API, logging, and
-memory coverage. The focused Week 9 orchestration/API/memory regression
-run completed with **38 passing tests**. A new full-suite total is
-intentionally not claimed here until the entire repository suite is
-rerun after the Week 9 changes.
+The full repository test suite currently completes with **215 passing
+tests**. This includes the original property-search, compliance, memory,
+market, recommendation, retrieval, and Week 8 knowledge coverage plus
+the Week 9 router, orchestrator, adapters, composition, FastAPI,
+logging, and `MemoryStore` tests.
 
 Validation now covers workflow routing, compliance, session memory,
 repository/query behavior, market and recommendation scoring,
@@ -882,7 +830,7 @@ interface.
 
 ## Repository Structure
 
-``` text
+```text
 src/
 ├── agents/          # Workflow and market-analysis agents
 ├── api/             # FastAPI application and public request/response schemas
@@ -938,6 +886,7 @@ partial-failure preservation, a shared composition root, FastAPI service
 endpoints, structured latency/error logging, a lightweight pluggable
 `MemoryStore`, and a fourth Streamlit **Unified Copilot** tab with
 separate history. The focused Week 9 orchestration/API/memory regression
-run completed with **38 passing tests**, and real smoke tests
+run completed with **38 passing tests**, while the final full repository
+suite completed with **215 passing tests**. Real smoke tests
 successfully exercised both the composition root and FastAPI `/chat`
 knowledge route.
