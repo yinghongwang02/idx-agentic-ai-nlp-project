@@ -29,6 +29,9 @@ from src.search.mysql_sold_comp_repository import (
 )
 from src.workflow.graph import PropertySearchGraph
 
+from src.orchestration.composition import (
+    create_orchestrator,
+)
 
 DEFAULT_EMBEDDINGS_PATH = Path(
     "artifacts/embeddings/full/"
@@ -97,6 +100,15 @@ def create_hybrid_recommendation_service(
             comparable_value_agent
         ),
     )
+
+@st.cache_resource
+def create_unified_orchestrator():
+    """
+    Create the Week 9 unified LangGraph orchestrator once per
+    Streamlit process.
+    """
+
+    return create_orchestrator()
 
 
 # =====================================================================
@@ -368,6 +380,13 @@ if "hybrid_history" not in st.session_state:
 if "knowledge_history" not in st.session_state:
     st.session_state.knowledge_history = []
 
+if "unified_history" not in st.session_state:
+    st.session_state.unified_history = []
+
+if "unified_session_id" not in st.session_state:
+    st.session_state.unified_session_id = (
+        f"streamlit-{id(st.session_state)}"
+    )
 
 # =====================================================================
 # Sidebar
@@ -490,6 +509,42 @@ with st.sidebar:
                 if item.get("top_source"):
                     st.write(f"**Top Source:** {item['top_source']}")
 
+    st.divider()
+
+    st.header("✨💬 Unified Copilot History")
+
+    unified_history = (
+        st.session_state.unified_history
+    )
+
+    if not unified_history:
+        st.caption(
+            "No unified requests yet."
+        )
+
+    else:
+        for item in unified_history:
+            title = (
+                f"{item['timestamp']} | "
+                f"{item['query']}"
+            )
+
+            with st.expander(title):
+                st.write(
+                    f"**Route:** "
+                    f"{item['route']}"
+                )
+
+                agents = item.get(
+                    "agents_invoked",
+                    [],
+                )
+
+                if agents:
+                    st.write(
+                        "**Agents:** "
+                        + ", ".join(agents)
+                    )
 
 # =====================================================================
 # Header
@@ -507,11 +562,17 @@ st.caption(
 )
 
 
-search_tab, similar_tab, knowledge_tab = st.tabs(
+(
+    search_tab,
+    similar_tab,
+    knowledge_tab,
+    unified_tab,
+) = st.tabs(
     [
         "🔎 Property Search",
         "🏡 Similar Home Recommendation",
         "📖 Knowledge Assistant",
+        "✨💬 Unified Copilot",
     ]
 )
 
@@ -1334,3 +1395,227 @@ with knowledge_tab:
                 st.error("Knowledge RAG could not be completed.")
                 with st.expander("Technical details"):
                     st.code(str(exc))
+
+
+# =====================================================================
+# TAB 4 — WEEK 9 UNIFIED AGENTIC COPILOT
+# =====================================================================
+
+
+with unified_tab:
+    st.subheader(
+        "✨💬 Unified Agentic Copilot"
+    )
+
+    st.caption(
+        "Ask a real-estate question in natural language. "
+        "The Week 9 orchestrator automatically routes the request "
+        "to property search, market analysis, similar-home "
+        "recommendation, knowledge RAG, or multiple capabilities."
+    )
+
+    st.info(
+        "The unified router supports single-capability requests "
+        "and mixed-intent fan-out/fan-in orchestration."
+    )
+
+    example_col1, example_col2, example_col3 = st.columns(3)
+
+    with example_col1:
+        st.caption(
+            "Search: Find homes in Irvine under $1.5M."
+        )
+
+    with example_col2:
+        st.caption(
+            "Knowledge: What does DOM mean in real estate?"
+        )
+
+    with example_col3:
+        st.caption(
+            "Mixed: Find homes in Irvine and tell me "
+            "about the local market."
+        )
+
+    unified_query = st.text_input(
+        "Ask the Unified Copilot",
+        placeholder=(
+            "Try: Find homes in Irvine under $1.5M "
+            "and tell me about the local market"
+        ),
+        key="unified_query",
+    )
+
+    if st.button(
+        "✨💬 Ask Unified Copilot",
+        key="unified_ask_button",
+    ):
+        if not unified_query.strip():
+            st.warning(
+                "Please enter a question."
+            )
+
+        else:
+            try:
+                orchestrator = (
+                    create_unified_orchestrator()
+                )
+
+                with st.spinner(
+                    "✨💬 Routing your request and "
+                    "coordinating capabilities..."
+                ):
+                    result = orchestrator.invoke(
+                        unified_query.strip(),
+                        session_id=(
+                            st.session_state
+                            .unified_session_id
+                        ),
+                    )
+
+                route = result.get(
+                    "route",
+                    "unknown",
+                )
+
+                routes = result.get(
+                    "routes",
+                    [],
+                )
+
+                agents_invoked = result.get(
+                    "agents_invoked",
+                    [],
+                )
+
+                errors = result.get(
+                    "errors",
+                    [],
+                )
+
+                final_response = result.get(
+                    "final_response",
+                    "",
+                )
+
+                st.session_state.unified_history.insert(
+                    0,
+                    {
+                        "timestamp": (
+                            datetime.now()
+                            .strftime("%H:%M:%S")
+                        ),
+                        "query": unified_query.strip(),
+                        "route": route,
+                        "agents_invoked": (
+                            agents_invoked
+                        ),
+                    },
+                )
+
+                st.session_state.unified_history = (
+                    st.session_state
+                    .unified_history[:5]
+                )
+
+                # -----------------------------------------------------
+                # Routing metadata
+                # -----------------------------------------------------
+
+                st.markdown(
+                    "### Orchestration"
+                )
+
+                (
+                    route_col,
+                    agents_col,
+                ) = st.columns(2)
+
+                with route_col:
+                    st.metric(
+                        "Selected Route",
+                        str(route),
+                    )
+
+                with agents_col:
+                    st.metric(
+                        "Agents Invoked",
+                        len(agents_invoked),
+                    )
+
+                if routes:
+                    st.write(
+                        "**Dispatched capabilities:** "
+                        + ", ".join(routes)
+                    )
+
+                if agents_invoked:
+                    st.write(
+                        "**Agents invoked:** "
+                        + ", ".join(
+                            agents_invoked
+                        )
+                    )
+
+                route_reason = result.get(
+                    "route_reason",
+                    "",
+                )
+
+                if route_reason:
+                    with st.expander(
+                        "Why this route was selected"
+                    ):
+                        st.write(
+                            route_reason
+                        )
+
+                # -----------------------------------------------------
+                # Unified response
+                # -----------------------------------------------------
+
+                st.markdown(
+                    "### ✨💬 Unified Response"
+                )
+
+                if final_response:
+                    st.write(
+                        final_response
+                    )
+
+                else:
+                    st.info(
+                        "The orchestrator returned "
+                        "no response content."
+                    )
+
+                # -----------------------------------------------------
+                # Partial failures
+                # -----------------------------------------------------
+
+                if errors:
+                    st.warning(
+                        "The request completed with "
+                        "partial capability failures."
+                    )
+
+                    with st.expander(
+                        "Partial failure details"
+                    ):
+                        for error in errors:
+                            st.write(
+                                f"- {error}"
+                            )
+
+            except Exception as exc:
+                st.error(
+                    "The Unified Copilot could not "
+                    "complete this request."
+                )
+
+                with st.expander(
+                    "Technical details"
+                ):
+                    st.code(
+                        str(exc)
+                    )
