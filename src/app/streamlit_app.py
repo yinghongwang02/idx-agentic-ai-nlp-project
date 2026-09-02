@@ -33,6 +33,20 @@ from src.orchestration.composition import (
     create_orchestrator,
 )
 
+from src.communication.email_draft_agent import (
+    EmailDraftAgent,
+)
+from src.communication.email_approval import (
+    EmailApprovalGate,
+)
+from src.communication.outbound_safety import (
+    OutboundSafetyGuard,
+)
+from src.communication.mock_email_channel import (
+    MockEmailChannel,
+    SafeMockEmailSender,
+)
+
 DEFAULT_EMBEDDINGS_PATH = Path(
     "artifacts/embeddings/full/"
     "listing_embeddings.npy"
@@ -388,6 +402,47 @@ if "unified_session_id" not in st.session_state:
         f"streamlit-{id(st.session_state)}"
     )
 
+
+# ---------------------------------------------------------------------
+# Week 11 email draft / approval / mock-delivery state
+# ---------------------------------------------------------------------
+
+if "latest_unified_result" not in st.session_state:
+    st.session_state.latest_unified_result = None
+
+if "latest_unified_query" not in st.session_state:
+    st.session_state.latest_unified_query = ""
+
+if "email_draft" not in st.session_state:
+    st.session_state.email_draft = None
+
+if "email_approval" not in st.session_state:
+    st.session_state.email_approval = None
+
+if "email_delivery" not in st.session_state:
+    st.session_state.email_delivery = None
+
+if "email_safety_result" not in st.session_state:
+    st.session_state.email_safety_result = None
+
+if "mock_email_channel" not in st.session_state:
+    st.session_state.mock_email_channel = MockEmailChannel()
+
+if "email_draft_agent" not in st.session_state:
+    st.session_state.email_draft_agent = EmailDraftAgent()
+
+if "email_approval_gate" not in st.session_state:
+    st.session_state.email_approval_gate = EmailApprovalGate()
+
+if "outbound_safety_guard" not in st.session_state:
+    st.session_state.outbound_safety_guard = OutboundSafetyGuard()
+
+if "safe_mock_email_sender" not in st.session_state:
+    st.session_state.safe_mock_email_sender = SafeMockEmailSender(
+        channel=st.session_state.mock_email_channel,
+        safety_guard=st.session_state.outbound_safety_guard,
+    )
+
 # =====================================================================
 # Sidebar
 # =====================================================================
@@ -567,12 +622,14 @@ st.caption(
     similar_tab,
     knowledge_tab,
     unified_tab,
+    email_tab,
 ) = st.tabs(
     [
         "🔎 Property Search",
         "🏡 Similar Home Recommendation",
         "📖 Knowledge Assistant",
         "✨💬 Unified Copilot",
+        "📧 Email Approval",
     ]
 )
 
@@ -1473,6 +1530,20 @@ with unified_tab:
                         ),
                     )
 
+                # Persist the latest real orchestrator result so the
+                # Week 11 email tab can create a draft on a later rerun.
+                st.session_state.latest_unified_result = result
+                st.session_state.latest_unified_query = (
+                    unified_query.strip()
+                )
+
+                # A new application result invalidates any older email
+                # approval / delivery state.
+                st.session_state.email_draft = None
+                st.session_state.email_approval = None
+                st.session_state.email_delivery = None
+                st.session_state.email_safety_result = None
+
                 route = result.get(
                     "route",
                     "unknown",
@@ -1619,3 +1690,425 @@ with unified_tab:
                     st.code(
                         str(exc)
                     )
+
+# =====================================================================
+# TAB 5 — WEEK 11 EMAIL DRAFT + HUMAN APPROVAL + MOCK DELIVERY
+# =====================================================================
+
+with email_tab:
+    st.subheader(
+        "📧 Email Draft, Human Approval & Safe Mock Delivery"
+    )
+
+    st.caption(
+        "Generate an email from the latest real Unified Copilot result, "
+        "preview it, explicitly approve or reject it, then pass it through "
+        "the outbound safety guard before mock delivery."
+    )
+
+    st.info(
+        "Safety invariant: no outbound delivery is allowed without an "
+        "explicit human approval record. Mock delivery never contacts "
+        "a real email provider."
+    )
+
+    latest_result = (
+        st.session_state.latest_unified_result
+    )
+
+    if latest_result is None:
+        st.warning(
+            "Run a Search, Market, or Mixed request in the "
+            "Unified Copilot tab first."
+        )
+
+    else:
+        latest_route = latest_result.get(
+            "route",
+            "unknown",
+        )
+
+        latest_query = (
+            st.session_state.latest_unified_query
+        )
+
+        route_col, source_col = st.columns(2)
+
+        with route_col:
+            st.metric(
+                "Latest Route",
+                str(latest_route),
+            )
+
+        with source_col:
+            st.metric(
+                "Source",
+                "Real LangGraph Orchestrator",
+            )
+
+        if latest_query:
+            st.write(
+                "**Source query:** "
+                f"{latest_query}"
+            )
+
+        recipient = st.text_input(
+            "Recipient email",
+            value="buyer@example.com",
+            key="email_recipient",
+        )
+
+        if st.button(
+            "Generate Email Draft",
+            key="generate_email_draft_button",
+        ):
+            try:
+                email_agent = (
+                    st.session_state.email_draft_agent
+                )
+
+                search_result = latest_result.get(
+                    "search_result"
+                )
+
+                market_result = latest_result.get(
+                    "market_result"
+                )
+
+                draft = None
+
+                # Search and mixed routes take priority because a mixed
+                # result can include both recommendations and market data.
+                if isinstance(search_result, dict):
+                    recommendations = search_result.get(
+                        "recommendations",
+                        [],
+                    )
+
+                    if recommendations:
+                        draft = (
+                            email_agent
+                            .draft_property_digest(
+                                to=recipient,
+                                listings=recommendations,
+                                market_summary=market_result,
+                                buyer_preferences=latest_query,
+                            )
+                        )
+
+                # Standalone market route.
+                if (
+                    draft is None
+                    and market_result is not None
+                ):
+                    draft = (
+                        email_agent
+                        .draft_weekly_market_report(
+                            to=recipient,
+                            market_summary=market_result,
+                        )
+                    )
+
+                if draft is None:
+                    st.warning(
+                        "The latest result does not currently contain "
+                        "a supported email payload. Use a Search, Market, "
+                        "or Mixed query with property recommendations."
+                    )
+
+                else:
+                    st.session_state.email_draft = draft
+                    st.session_state.email_approval = None
+                    st.session_state.email_delivery = None
+                    st.session_state.email_safety_result = None
+
+                    st.success(
+                        "Draft created and queued for human approval."
+                    )
+
+            except Exception as exc:
+                st.error(
+                    "Email draft could not be created."
+                )
+
+                with st.expander(
+                    "Technical details"
+                ):
+                    st.code(str(exc))
+
+        draft = st.session_state.email_draft
+
+        if draft is not None:
+            st.markdown(
+                "### Email Preview"
+            )
+
+            status_col, type_col = st.columns(2)
+
+            with status_col:
+                st.metric(
+                    "Draft Status",
+                    draft.status,
+                )
+
+            with type_col:
+                st.metric(
+                    "Draft Type",
+                    draft.metadata.get(
+                        "draft_type",
+                        "unknown",
+                    ),
+                )
+
+            st.write(
+                f"**To:** {draft.to}"
+            )
+
+            st.write(
+                f"**Subject:** {draft.subject}"
+            )
+
+            st.text_area(
+                "Body",
+                value=draft.body,
+                height=320,
+                disabled=True,
+                key="email_body_preview",
+            )
+
+            st.caption(
+                "The draft cannot be delivered while it remains "
+                "pending approval."
+            )
+
+            approve_col, reject_col = st.columns(2)
+
+            with approve_col:
+                if st.button(
+                    "✅ Approve & Mock Send",
+                    key="approve_mock_send_button",
+                    use_container_width=True,
+                ):
+                    try:
+                        approval = (
+                            st.session_state
+                            .email_approval_gate
+                            .approve(
+                                draft,
+                                decided_by=(
+                                    "streamlit-user"
+                                ),
+                            )
+                        )
+
+                        safety_result = (
+                            st.session_state
+                            .outbound_safety_guard
+                            .check(
+                                approval
+                            )
+                        )
+
+                        st.session_state.email_approval = (
+                            approval
+                        )
+
+                        st.session_state.email_safety_result = (
+                            safety_result
+                        )
+
+                        if not safety_result.allowed:
+                            st.session_state.email_delivery = None
+
+                        else:
+                            delivery = (
+                                st.session_state
+                                .safe_mock_email_sender
+                                .send_approved(
+                                    approval,
+                                    session_id=(
+                                        st.session_state
+                                        .unified_session_id
+                                    ),
+                                )
+                            )
+
+                            st.session_state.email_delivery = (
+                                delivery
+                            )
+
+                    except Exception as exc:
+                        st.session_state.email_delivery = None
+
+                        st.error(
+                            "Outbound email was blocked."
+                        )
+
+                        with st.expander(
+                            "Technical details"
+                        ):
+                            st.code(str(exc))
+
+            with reject_col:
+                if st.button(
+                    "❌ Reject",
+                    key="reject_email_button",
+                    use_container_width=True,
+                ):
+                    rejection = (
+                        st.session_state
+                        .email_approval_gate
+                        .reject(
+                            draft,
+                            decided_by=(
+                                "streamlit-user"
+                            ),
+                            reason=(
+                                "Rejected in Streamlit "
+                                "human-approval UI."
+                            ),
+                        )
+                    )
+
+                    safety_result = (
+                        st.session_state
+                        .outbound_safety_guard
+                        .check(
+                            rejection
+                        )
+                    )
+
+                    st.session_state.email_approval = (
+                        rejection
+                    )
+
+                    st.session_state.email_safety_result = (
+                        safety_result
+                    )
+
+                    # Rejected email is intentionally never sent.
+                    st.session_state.email_delivery = None
+
+            approval = (
+                st.session_state.email_approval
+            )
+
+            safety_result = (
+                st.session_state.email_safety_result
+            )
+
+            delivery = (
+                st.session_state.email_delivery
+            )
+
+            if approval is not None:
+                st.markdown(
+                    "### Human Approval Decision"
+                )
+
+                if approval.is_approved:
+                    st.success(
+                        "Explicit human approval recorded."
+                    )
+                else:
+                    st.error(
+                        "Email rejected by human reviewer."
+                    )
+
+                st.write(
+                    f"**Decision:** {approval.status}"
+                )
+
+                st.write(
+                    f"**Decided by:** {approval.decided_by}"
+                )
+
+                st.write(
+                    "**Decision time:** "
+                    f"{approval.decided_at.isoformat()}"
+                )
+
+                if approval.reason:
+                    st.write(
+                        f"**Reason:** {approval.reason}"
+                    )
+
+            if safety_result is not None:
+                st.markdown(
+                    "### Outbound Safety Check"
+                )
+
+                if safety_result.allowed:
+                    st.success(
+                        "Safety guard passed. Outbound action allowed."
+                    )
+                else:
+                    st.error(
+                        "Safety guard blocked outbound delivery."
+                    )
+
+                    for reason in safety_result.reasons:
+                        st.write(
+                            f"- {reason}"
+                        )
+
+            if delivery is not None:
+                st.markdown(
+                    "### Mock Delivery"
+                )
+
+                if delivery.success:
+                    st.success(
+                        "Mock email sent successfully. "
+                        "No real email provider was contacted."
+                    )
+
+                    delivery_col1, delivery_col2 = (
+                        st.columns(2)
+                    )
+
+                    with delivery_col1:
+                        st.metric(
+                            "Channel",
+                            delivery.channel,
+                        )
+
+                    with delivery_col2:
+                        st.metric(
+                            "Delivery Status",
+                            "mock_sent",
+                        )
+
+                    st.write(
+                        f"**Recipient:** "
+                        f"{delivery.recipient}"
+                    )
+
+                    st.write(
+                        f"**Mock Message ID:** "
+                        f"{delivery.message_id}"
+                    )
+
+                    sent_count = len(
+                        st.session_state
+                        .mock_email_channel
+                        .sent_messages
+                    )
+
+                    st.caption(
+                        "Messages recorded by mock channel "
+                        f"this session: {sent_count}"
+                    )
+
+            st.divider()
+
+            if st.button(
+                "Clear Email Workflow",
+                key="clear_email_workflow_button",
+            ):
+                st.session_state.email_draft = None
+                st.session_state.email_approval = None
+                st.session_state.email_delivery = None
+                st.session_state.email_safety_result = None
+                st.rerun()
+
