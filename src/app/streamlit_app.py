@@ -46,6 +46,9 @@ from src.communication.mock_email_channel import (
     MockEmailChannel,
     SafeMockEmailSender,
 )
+from src.communication.gmail_email_channel import (
+    SafeGmailEmailSender,
+)
 
 DEFAULT_EMBEDDINGS_PATH = Path(
     "artifacts/embeddings/full/"
@@ -404,7 +407,7 @@ if "unified_session_id" not in st.session_state:
 
 
 # ---------------------------------------------------------------------
-# Week 11 email draft / approval / mock-delivery state
+# Week 11 email draft / approval / delivery state
 # ---------------------------------------------------------------------
 
 if "latest_unified_result" not in st.session_state:
@@ -425,6 +428,12 @@ if "email_delivery" not in st.session_state:
 if "email_safety_result" not in st.session_state:
     st.session_state.email_safety_result = None
 
+if "email_delivery_mode" not in st.session_state:
+    st.session_state.email_delivery_mode = "Mock"
+
+if "email_send_attempted" not in st.session_state:
+    st.session_state.email_send_attempted = False
+
 if "mock_email_channel" not in st.session_state:
     st.session_state.mock_email_channel = MockEmailChannel()
 
@@ -440,6 +449,11 @@ if "outbound_safety_guard" not in st.session_state:
 if "safe_mock_email_sender" not in st.session_state:
     st.session_state.safe_mock_email_sender = SafeMockEmailSender(
         channel=st.session_state.mock_email_channel,
+        safety_guard=st.session_state.outbound_safety_guard,
+    )
+
+if "safe_gmail_email_sender" not in st.session_state:
+    st.session_state.safe_gmail_email_sender = SafeGmailEmailSender(
         safety_guard=st.session_state.outbound_safety_guard,
     )
 
@@ -1543,6 +1557,7 @@ with unified_tab:
                 st.session_state.email_approval = None
                 st.session_state.email_delivery = None
                 st.session_state.email_safety_result = None
+                st.session_state.email_send_attempted = False
 
                 route = result.get(
                     "route",
@@ -1692,24 +1707,23 @@ with unified_tab:
                     )
 
 # =====================================================================
-# TAB 5 — WEEK 11 EMAIL DRAFT + HUMAN APPROVAL + MOCK DELIVERY
+# TAB 5 — WEEK 11 EMAIL DRAFT + HUMAN APPROVAL + SAFE DELIVERY
 # =====================================================================
 
 with email_tab:
     st.subheader(
-        "📧 Email Draft, Human Approval & Safe Mock Delivery"
+        "📧 Email Draft, Human Approval & Safe Delivery"
     )
 
     st.caption(
         "Generate an email from the latest real Unified Copilot result, "
-        "preview it, explicitly approve or reject it, then pass it through "
-        "the outbound safety guard before mock delivery."
+        "preview it, explicitly approve or reject it, then deliver through "
+        "either the in-memory Mock channel or the real Gmail API."
     )
 
     st.info(
         "Safety invariant: no outbound delivery is allowed without an "
-        "explicit human approval record. Mock delivery never contacts "
-        "a real email provider."
+        "explicit human approval record and a passing outbound safety check."
     )
 
     latest_result = (
@@ -1821,6 +1835,7 @@ with email_tab:
                     st.session_state.email_approval = None
                     st.session_state.email_delivery = None
                     st.session_state.email_safety_result = None
+                    st.session_state.email_send_attempted = False
 
                     st.success(
                         "Draft created and queued for human approval."
@@ -1873,7 +1888,10 @@ with email_tab:
                 value=draft.body,
                 height=320,
                 disabled=True,
-                key="email_body_preview",
+                key=(
+                    "email_body_preview_"
+                    f"{hash((draft.to, draft.subject, draft.body))}"
+                ),
             )
 
             st.caption(
@@ -1881,14 +1899,93 @@ with email_tab:
                 "pending approval."
             )
 
+            # Once a human decision/send attempt exists, lock the delivery
+            # controls. This prevents a Streamlit rerun or repeated click
+            # from sending the same draft twice.
+            decision_locked = (
+                st.session_state.email_approval is not None
+                or st.session_state.email_send_attempted
+            )
+
+            st.markdown(
+                "### Delivery Mode"
+            )
+
+            delivery_mode = st.radio(
+                "Choose outbound channel",
+                options=(
+                    "Mock",
+                    "Gmail (REAL)",
+                ),
+                key="email_delivery_mode",
+                horizontal=True,
+                disabled=decision_locked,
+            )
+
+            is_real_gmail = (
+                delivery_mode == "Gmail (REAL)"
+            )
+
+            real_send_confirmed = True
+
+            if is_real_gmail:
+                st.warning(
+                    "⚠️ REAL DELIVERY: approving this draft will send an "
+                    f"actual email to **{draft.to}** through your authorized "
+                    "Gmail account."
+                )
+
+                real_send_confirmed = st.checkbox(
+                    "I understand this will send a real email.",
+                    key="confirm_real_gmail_send",
+                    disabled=decision_locked,
+                )
+            else:
+                st.info(
+                    "Mock mode records the message in memory only. "
+                    "No real email provider is contacted."
+                )
+
+            if decision_locked:
+                st.info(
+                    "This draft is locked because a human decision or send "
+                    "attempt has already been recorded. Clear the workflow "
+                    "or generate a new draft before another delivery attempt."
+                )
+
+            approve_label = (
+                "✅ Approve & Send via Gmail"
+                if is_real_gmail
+                else "✅ Approve & Mock Send"
+            )
+
+            approve_disabled = (
+                decision_locked
+                or (
+                    is_real_gmail
+                    and not real_send_confirmed
+                )
+            )
+
             approve_col, reject_col = st.columns(2)
 
             with approve_col:
                 if st.button(
-                    "✅ Approve & Mock Send",
-                    key="approve_mock_send_button",
+                    approve_label,
+                    key="approve_email_send_button",
                     use_container_width=True,
+                    disabled=approve_disabled,
+                    type=(
+                        "primary"
+                        if is_real_gmail
+                        else "secondary"
+                    ),
                 ):
+                    # Lock immediately before any provider call. This is
+                    # deliberately set before Gmail delivery so reruns or
+                    # double-clicks cannot re-enter the send path.
+                    st.session_state.email_send_attempted = True
+
                     try:
                         approval = (
                             st.session_state
@@ -1921,16 +2018,23 @@ with email_tab:
                             st.session_state.email_delivery = None
 
                         else:
-                            delivery = (
-                                st.session_state
-                                .safe_mock_email_sender
-                                .send_approved(
-                                    approval,
-                                    session_id=(
-                                        st.session_state
-                                        .unified_session_id
-                                    ),
+                            if is_real_gmail:
+                                sender = (
+                                    st.session_state
+                                    .safe_gmail_email_sender
                                 )
+                            else:
+                                sender = (
+                                    st.session_state
+                                    .safe_mock_email_sender
+                                )
+
+                            delivery = sender.send_approved(
+                                approval,
+                                session_id=(
+                                    st.session_state
+                                    .unified_session_id
+                                ),
                             )
 
                             st.session_state.email_delivery = (
@@ -1941,7 +2045,7 @@ with email_tab:
                         st.session_state.email_delivery = None
 
                         st.error(
-                            "Outbound email was blocked."
+                            "Outbound email was blocked or delivery failed."
                         )
 
                         with st.expander(
@@ -1954,7 +2058,10 @@ with email_tab:
                     "❌ Reject",
                     key="reject_email_button",
                     use_container_width=True,
+                    disabled=decision_locked,
                 ):
+                    st.session_state.email_send_attempted = True
+
                     rejection = (
                         st.session_state
                         .email_approval_gate
@@ -2054,14 +2161,23 @@ with email_tab:
 
             if delivery is not None:
                 st.markdown(
-                    "### Mock Delivery"
+                    "### Delivery Result"
                 )
 
                 if delivery.success:
-                    st.success(
-                        "Mock email sent successfully. "
-                        "No real email provider was contacted."
-                    )
+                    if delivery.channel == "gmail":
+                        st.success(
+                            "REAL Gmail delivery succeeded."
+                        )
+                        delivery_status = "real_sent"
+                        id_label = "Gmail Message ID"
+                    else:
+                        st.success(
+                            "Mock email sent successfully. "
+                            "No real email provider was contacted."
+                        )
+                        delivery_status = "mock_sent"
+                        id_label = "Mock Message ID"
 
                     delivery_col1, delivery_col2 = (
                         st.columns(2)
@@ -2076,7 +2192,7 @@ with email_tab:
                     with delivery_col2:
                         st.metric(
                             "Delivery Status",
-                            "mock_sent",
+                            delivery_status,
                         )
 
                     st.write(
@@ -2085,20 +2201,37 @@ with email_tab:
                     )
 
                     st.write(
-                        f"**Mock Message ID:** "
+                        f"**{id_label}:** "
                         f"{delivery.message_id}"
                     )
 
-                    sent_count = len(
-                        st.session_state
-                        .mock_email_channel
-                        .sent_messages
+                    if delivery.channel == "mock_email":
+                        sent_count = len(
+                            st.session_state
+                            .mock_email_channel
+                            .sent_messages
+                        )
+
+                        st.caption(
+                            "Messages recorded by mock channel "
+                            f"this session: {sent_count}"
+                        )
+                    else:
+                        st.caption(
+                            "The provider returned a Gmail message ID. "
+                            "Verify the sender's Sent folder and recipient inbox "
+                            "for final end-to-end confirmation."
+                        )
+
+                else:
+                    st.error(
+                        "Delivery failed."
                     )
 
-                    st.caption(
-                        "Messages recorded by mock channel "
-                        f"this session: {sent_count}"
-                    )
+                    if delivery.error:
+                        st.write(
+                            f"**Provider error:** {delivery.error}"
+                        )
 
             st.divider()
 
@@ -2110,5 +2243,6 @@ with email_tab:
                 st.session_state.email_approval = None
                 st.session_state.email_delivery = None
                 st.session_state.email_safety_result = None
+                st.session_state.email_send_attempted = False
                 st.rerun()
 
