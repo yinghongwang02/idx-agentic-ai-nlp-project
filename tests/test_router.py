@@ -175,3 +175,14 @@ def test_router_classifies_query_correctly(
     assert decision.route == expected_route
     assert decision.routes == expected_routes
     assert decision.reason
+
+
+def test_weekly_market_report_routes_to_market():
+    router = IntentRouter()
+
+    decision = router.route(
+        "Give me a weekly market report for Irvine."
+    )
+
+    assert decision.route == "market"
+    assert decision.routes == ["market"]
