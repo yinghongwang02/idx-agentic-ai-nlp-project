@@ -6,8 +6,7 @@ A production-style LangGraph-based real-estate copilot that combines
 structured MLS retrieval, full-corpus semantic search, hybrid
 recommendation, document-aware knowledge RAG, session memory, Fair
 Housing guardrails, sold-comparable market analysis, bounded parallel
-property analysis, and a Week 9 unified multi-capability orchestrator
-exposed through Streamlit and FastAPI.
+property analysis, a unified multi-capability orchestrator, human-approved Gmail delivery, and an OpenClaw runtime connected to a real WhatsApp channel. The core LangGraph application is exposed through Streamlit, FastAPI, and external channel adapters.
 
 The system supports four complementary user workflows:
 
@@ -58,8 +57,10 @@ The system supports four complementary user workflows:
     observability.
 -   **Pluggable session-memory boundary** through a lightweight
     `MemoryStore` abstraction for future persistent backends.
--   **215 passing automated tests** across the full repository, plus
-    real MySQL/OpenAI/FAISS integration smoke tests.
+-   **268 passing automated tests** across the full repository, plus real MySQL/OpenAI/FAISS, Gmail, Streamlit, OpenClaw, and WhatsApp end-to-end validation.
+-   **Human-approved outbound email workflow** with draft preview, explicit approval/rejection, outbound safety checks, real Gmail API delivery, and duplicate-send protection.
+-   **OpenClaw runtime integration with real WhatsApp** while preserving LangGraph as the source of truth; WhatsApp requests are routed through a thin Python adapter into the Unified Copilot.
+-   **Weekly Market Report** requests reuse the existing market route and MarketAgent trend data, producing channel-friendly reports with comparable-sales, price, DOM, sale-to-list, PPSF, and market-direction signals.
 
 ## Core MVP Performance --- Week 6
 
@@ -496,7 +497,175 @@ flowchart TD
     C --> D[grounded unified response]
 ```
 
+## Outbound Communication and External Runtime --- Weeks 10--11
+
+Weeks 10--11 extend the Week 9 orchestrator without replacing its internal LangGraph workflows. The closeout work adds a guarded email-delivery path and an external OpenClaw/WhatsApp runtime boundary. The Unified Copilot remains the source of truth for routing, retrieval, market analysis, recommendations, compliance, and grounded knowledge responses.
+
+### Email Draft, Human Approval, and Safe Gmail Delivery
+
+The email workflow can generate either a property-recommendation digest or a weekly market report from real Unified Copilot results. Every draft begins in `pending_approval` state. Delivery is blocked until an explicit human approval record exists and the outbound safety guard passes.
+
+```mermaid
+flowchart TD
+    U[Unified Copilot Result] --> D[EmailDraftAgent]
+    D --> P[pending_approval]
+    P --> H{Human Decision}
+    H -->|Reject| X[Blocked / Rejected]
+    H -->|Approve| S[Outbound Safety Check]
+    S -->|Fail| B[Blocked]
+    S -->|Pass| C{Delivery Channel}
+    C --> M[Mock Email Channel]
+    C --> G[Gmail API - Real Delivery]
+    G --> L[Lock Draft / Prevent Duplicate Send]
+```
+
+The Streamlit Email Approval workflow exposes the generated subject/body, recipient, draft type, approval decision, decision timestamp, safety result, and delivery result. Real Gmail delivery uses OAuth credentials stored outside source control. A successful delivery returns the Gmail provider message ID. The workflow locks a draft after a human decision or send attempt so the same approved draft cannot be delivered repeatedly.
+
+Real Gmail validation covered OAuth authorization, explicit approval, outbound safety, successful API delivery, and duplicate-send prevention. A final smoke test successfully delivered through Gmail after explicit approval and returned a provider message ID.
+
+### Weekly Market Report
+
+Weekly reports reuse the existing `market` route rather than introducing a duplicate reporting agent. A request such as:
+
+```text
+Give me a weekly market report for Irvine.
+```
+
+routes to `MarketAgent`, which supplies the existing `MarketSummary` and recent `MarketTrend`. The report presentation includes available comparable-sales count, median close price, average days on market, average sale-to-list ratio, average PPSF, market direction, and recent trend changes. The same market data can be presented conversationally through the Unified Copilot/OpenClaw path or formatted as a `weekly_market_report` email draft behind the approval workflow.
+
+A final Irvine E2E check returned 500 recent comparable sales, a $1.54M median close price, 36.1 average DOM, a 98.3% sale-to-list ratio, approximately $809 PPSF, a `warming` direction, and a +2.7% recent median-price change. These values are local-data validation results, not general market claims.
+
+### OpenClaw Runtime and Real WhatsApp
+
+OpenClaw is integrated as an external runtime/channel adapter; it does not replace the LangGraph Unified Copilot. The repository includes an IDX real-estate OpenClaw skill and a thin CLI adapter that invokes the existing composition root and returns structured orchestration output.
+
+```mermaid
+flowchart TD
+    PHONE[WhatsApp User] --> WA[Real WhatsApp Channel]
+    WA --> OC[OpenClaw Runtime]
+    OC --> SKILL[idx-real-estate-copilot Skill]
+    SKILL --> ADAPTER[openclaw_copilot_adapter.py]
+    ADAPTER --> ORCH[LangGraph Unified Orchestrator]
+    ORCH --> ROUTER[Unified Router]
+    ROUTER --> SEARCH[Search]
+    ROUTER --> MARKET[Market]
+    ROUTER --> REC[Recommendation]
+    ROUTER --> KNOW[Knowledge RAG]
+    SEARCH --> MERGE[Unified Response]
+    MARKET --> MERGE
+    REC --> MERGE
+    KNOW --> MERGE
+    MERGE --> OC
+    OC --> WA
+    WA --> PHONE
+```
+
+The OpenClaw skill treats the Unified Copilot as the source of truth: it does not query the IDX MySQL database directly, bypass compliance/routing, invent listings or market statistics, or perform email delivery. Outbound email remains isolated behind the explicit approval and safety workflow. OpenClaw provides channel-aware presentation of the grounded Unified Copilot response for WhatsApp.
+
+The real WhatsApp channel was paired and validated as enabled, configured, linked, running, connected, and healthy. Final E2E regression covered a knowledge question, a weekly Irvine market report, and a mixed Irvine search + market request. The mixed request exercised the full phone → WhatsApp → OpenClaw → skill → Python adapter → LangGraph fan-out/fan-in → OpenClaw → WhatsApp path without exposing raw JSON or tracebacks.
+
+
 ## Architecture
+
+### End-to-End System Architecture
+
+The final system has one shared LangGraph application core with multiple user-facing and outbound interfaces. Streamlit and FastAPI call the application directly, while real WhatsApp traffic enters through OpenClaw and its thin Python adapter. Email is deliberately asymmetric: the Unified Copilot may generate source content for a draft, but no email is delivered until the separate human-approval and outbound-safety path authorizes either mock or real Gmail delivery.
+
+```mermaid
+flowchart LR
+    USER[User]
+
+    subgraph IN[Interaction Surfaces]
+        ST[Streamlit
+5 workflows]
+        API[FastAPI]
+        WA[WhatsApp]
+    end
+
+    subgraph EXT[External Runtime Boundary]
+        OC[OpenClaw Runtime]
+        SK[idx-real-estate-copilot Skill]
+        OA[Python OpenClaw Adapter]
+    end
+
+    subgraph CORE[LangGraph Application Core]
+        ORCH[Unified Orchestrator]
+        ROUTER[Unified Router]
+        SEARCH[Property Search]
+        MARKET[Market Analysis
++ Weekly Report Data]
+        REC[Similar-Home Recommendation]
+        RAG[Knowledge RAG]
+        MERGE[Unified Merge / Response]
+    end
+
+    subgraph DATA[Data and Retrieval]
+        MYSQL[(MySQL
+Active + Sold MLS)]
+        FAISS[(FAISS
+Listing Embeddings)]
+        DOCS[(Knowledge Documents
++ FAISS)]
+        OPENAI[OpenAI
+LLM / Embeddings]
+    end
+
+    subgraph EMAIL[Guarded Outbound Email]
+        DRAFT[EmailDraftAgent]
+        PENDING[pending_approval]
+        HUMAN{Explicit Human
+Approve / Reject}
+        SAFE{Outbound
+Safety}
+        CHANNEL{Delivery Mode}
+        MOCK[Mock Channel]
+        GMAIL[Gmail API
+REAL]
+        LOCK[Workflow Lock
+Duplicate-Send Protection]
+    end
+
+    USER --> ST
+    USER --> API
+    USER --> WA
+    WA --> OC --> SK --> OA --> ORCH
+    ST --> ORCH
+    API --> ORCH
+
+    ORCH --> ROUTER
+    ROUTER --> SEARCH
+    ROUTER --> MARKET
+    ROUTER --> REC
+    ROUTER --> RAG
+    SEARCH --> MERGE
+    MARKET --> MERGE
+    REC --> MERGE
+    RAG --> MERGE
+
+    SEARCH --> MYSQL
+    MARKET --> MYSQL
+    REC --> MYSQL
+    REC --> FAISS
+    RAG --> DOCS
+    SEARCH --> OPENAI
+    REC --> OPENAI
+    RAG --> OPENAI
+
+    MERGE --> ST
+    MERGE --> API
+    MERGE --> OA --> OC --> WA
+
+    MERGE --> DRAFT
+    DRAFT --> PENDING --> HUMAN
+    HUMAN -->|Reject| LOCK
+    HUMAN -->|Approve| SAFE
+    SAFE -->|Fail| LOCK
+    SAFE -->|Pass| CHANNEL
+    CHANNEL --> MOCK --> LOCK
+    CHANNEL --> GMAIL --> LOCK
+```
+
+This diagram highlights the main trust boundaries. OpenClaw is a channel/runtime layer rather than a second reasoning system, so WhatsApp requests still execute the same LangGraph composition root used by the application. Likewise, Gmail is not callable directly from the orchestrator: outbound delivery is isolated behind draft state, explicit human approval, safety validation, and workflow locking. This keeps inbound conversational orchestration separate from consequential outbound actions.
 
 ### Core Property-Search Workflow
 
@@ -686,9 +855,7 @@ speedup to each layer independently.
 
 ## Interactive Streamlit Application
 
-The Streamlit application now exposes four complementary tabs:
-**Property Search**, **Similar Home Recommendation**, **Knowledge
-Assistant**, and **Unified Copilot**.
+The Streamlit application now exposes five complementary workflows: **Property Search**, **Similar Home Recommendation**, **Knowledge Assistant**, **Unified Copilot**, and **Email Approval**. The first four are interactive retrieval/reasoning surfaces; the fifth is a guarded outbound workflow built from the latest real Unified Copilot result.
 
 ### Property Search
 
@@ -777,27 +944,86 @@ maintain their own RAG history, while the Unified Copilot keeps a
 separate **Unified Copilot History** with route and invoked-agent
 metadata in the sidebar.
 
+### Email Approval
+
+The **Email Draft, Human Approval & Safe Delivery** workflow generates an email from the latest real Unified Copilot result and keeps delivery separate from generation. The UI shows the source route/query, recipient, subject, body, draft type, approval state, safety result, and provider delivery result.
+
+-   Drafts begin in `pending_approval`; a pending draft cannot be delivered.
+-   The user must explicitly **approve** or **reject** the draft in Streamlit.
+-   An approved draft must also pass the outbound safety guard before any channel is invoked.
+-   **Mock** mode exercises the complete approval/safety flow without external delivery.
+-   **Gmail (REAL)** mode sends through the locally authorized Gmail API account and clearly marks the action as real delivery.
+-   Successful Gmail delivery surfaces the provider message ID for E2E verification.
+-   After a human decision or send attempt is recorded, the workflow is locked; the user must clear the workflow or generate a new draft before another delivery attempt. This prevents accidental duplicate sends from the same draft.
+
+The current email workflow supports recommendation digests and `weekly_market_report` drafts. A market query such as `Tell me about the Irvine real estate market.` can therefore flow from the real LangGraph orchestrator into a weekly market email while retaining the same explicit approval and safety invariant.
+
 ## Technology Stack
 
-Python 3.10, LangGraph, LangChain, OpenAI embeddings/LLM providers,
-FAISS, NumPy, Pydantic, MySQL, FastAPI, Uvicorn, Streamlit, Pytest, and
-`ThreadPoolExecutor`.
+Python 3.10, LangGraph, LangChain, OpenAI embeddings/LLM providers, FAISS, NumPy, Pydantic, MySQL, FastAPI, Uvicorn, Streamlit, Pytest, Google Gmail API/OAuth, OpenClaw, WhatsApp, and `ThreadPoolExecutor`.
 
 ## Local Setup
 
+### Python Application
+
 ```bash
 python -m venv .venv
-# Windows: .venv\Scripts\activate
+# Windows PowerShell: .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+
+# Streamlit: Property Search, Similar Home, Knowledge, Unified Copilot, Email Approval
 python -m streamlit run src/app/streamlit_app.py
 
-# Optional Week 9 API service
+# Optional FastAPI service
 uvicorn src.api.app:app --reload
 ```
 
-Create `.env` from `.env.example` and configure local MySQL and
-model-provider credentials. Secrets and internal MLS data must not be
-committed.
+Create `.env` from `.env.example` and configure the local MySQL connection and model-provider credentials required by the capabilities you intend to run. The active-listing and sold-comparable tables, embedding artifacts, and knowledge artifacts must be available locally for their corresponding workflows. Internal MLS datasets, `.env`, OAuth credentials, OAuth tokens, and other secrets must not be committed.
+
+### OpenClaw + Real WhatsApp
+
+OpenClaw is a separate local runtime dependency; it is not installed by the Python `requirements.txt`. After installing/configuring OpenClaw and installing the repository skill, the adapter can be smoke-tested directly:
+
+```bash
+python -m scripts.openclaw_copilot_adapter "What does DOM mean in real estate?" --json
+```
+
+Start the local gateway in a dedicated terminal and leave it running:
+
+```bash
+openclaw gateway --port 18789
+```
+
+After pairing the WhatsApp channel, verify runtime/channel health from another terminal:
+
+```bash
+openclaw channels status --channel whatsapp --probe
+```
+
+The expected final state is a reachable gateway with WhatsApp enabled, configured, linked, running, connected, and healthy. The OpenClaw skill delegates requests to `scripts/openclaw_copilot_adapter.py`; it should not bypass the LangGraph application to query MySQL directly.
+
+### Gmail OAuth + Real Delivery
+
+Real Gmail delivery requires a Google OAuth Desktop client credential file and a locally generated authorization token. The project uses:
+
+```text
+secrets/gmail_credentials.json
+secrets/gmail_token.json
+```
+
+Both files are local secrets and must remain outside version control. Authorize or re-authorize Gmail with:
+
+```bash
+python -m scripts.authorize_gmail
+```
+
+A direct provider smoke test is available for explicit real-delivery validation:
+
+```bash
+python -m scripts.smoke_send_gmail --to <recipient@example.com>
+```
+
+The smoke script requires an explicit confirmation before sending. For the application-level flow, use the Streamlit **Email Approval** workflow: generate a new draft, select **Mock** or **Gmail (REAL)**, record an explicit human decision, allow the outbound safety check to run, and then deliver. Do not commit Gmail credentials/tokens or use real-delivery mode in a public deployment.
 
 ## Testing and Validation
 
@@ -814,11 +1040,9 @@ python -m src.dev_benchmark_candidate_parallel
 python -m pytest tests/test_orchestration_capabilities.py tests/test_orchestrator.py tests/test_orchestration_adapters.py tests/test_orchestration_composition.py tests/test_api.py tests/test_memory_store.py -v
 ```
 
-The full repository test suite currently completes with **215 passing
-tests**. This includes the original property-search, compliance, memory,
+The final full repository regression suite completes with **268 passing tests**. This includes the original property-search, compliance, memory,
 market, recommendation, retrieval, and Week 8 knowledge coverage plus
-the Week 9 router, orchestrator, adapters, composition, FastAPI,
-logging, and `MemoryStore` tests.
+the Week 9 router/orchestrator/API coverage and Weeks 10--11 email approval, outbound safety, Gmail channel, OpenClaw runtime, WhatsApp channel, and E2E regression coverage.
 
 Validation now covers workflow routing, compliance, session memory,
 repository/query behavior, market and recommendation scoring,
@@ -832,18 +1056,50 @@ interface.
 
 ```text
 src/
-├── agents/          # Workflow and market-analysis agents
+├── agents/          # Intent, compliance, market, email-draft, and analysis agents
 ├── api/             # FastAPI application and public request/response schemas
-├── app/             # Streamlit application
+├── app/             # Streamlit UI, including Email Approval / delivery workflow
+├── communication/   # Approval, outbound safety, Mock/Gmail channels, WhatsApp boundaries
 ├── embeddings/      # Listing embedding utilities
 ├── evaluation/      # Retrieval evaluation cases and metrics
 ├── knowledge/       # Grounded knowledge answering
 ├── memory/          # Search memory + pluggable orchestration MemoryStore
-├── orchestration/   # Week 9 router, adapters, composition, unified graph
+├── orchestration/   # Unified router, adapters, composition root, LangGraph orchestrator
 ├── providers/       # LLM and embedding provider abstractions
 ├── recommendation/  # Ranking, similarity, scoring, explanation
-├── search/          # Structured, semantic, hybrid, knowledge retrieval
-└── workflow/        # Parent graph and property-analysis subgraph
+├── schemas/         # Shared Pydantic/state contracts used across workflows
+├── search/          # Structured, semantic, hybrid, and knowledge retrieval
+└── workflow/        # Parent property-search graph and property-analysis subgraph
+
+openclaw/
+└── idx-real-estate-copilot/
+    └── SKILL.md      # OpenClaw skill delegating to the Unified Copilot adapter
+
+scripts/
+├── openclaw_copilot_adapter.py  # OpenClaw → LangGraph composition-root bridge
+├── authorize_gmail.py           # Local Gmail OAuth authorization / token generation
+└── smoke_send_gmail.py          # Explicit real Gmail provider smoke test
+
+secrets/                       # Local-only; excluded from version control
+├── gmail_credentials.json     # Google OAuth Desktop client credentials
+└── gmail_token.json           # Authorized Gmail OAuth token
+
+tests/
+├── test_orchestrator.py
+├── test_router.py
+├── test_market_trend.py
+├── test_email_draft_agent.py
+├── test_email_approval.py
+├── test_email_approval_flow.py
+├── test_email_draft_integration.py
+├── test_outbound_safety.py
+├── test_gmail_email_channel.py
+├── test_openclaw_runtime.py
+├── test_openclaw_whatsapp_e2e.py
+└── test_whatsapp_mock_channel.py
+
+# Additional property-search, retrieval, recommendation, compliance,
+# memory, API, and orchestration regression tests are also under tests/.
 
 docs/
 ├── architecture.md
@@ -852,9 +1108,9 @@ docs/
 └── real_estate_law.md
 
 artifacts/
-├── benchmarks/
-├── embeddings/
-└── knowledge/
+├── benchmarks/      # Performance / retrieval evaluation outputs
+├── embeddings/      # Local listing embedding index artifacts
+└── knowledge/       # Local knowledge-RAG artifacts
 ```
 
 Internal MLS datasets are excluded; public demos should use synthetic
@@ -890,3 +1146,7 @@ run completed with **38 passing tests**, while the final full repository
 suite completed with **215 passing tests**. Real smoke tests
 successfully exercised both the composition root and FastAPI `/chat`
 knowledge route.
+
+Weeks 10--11 complete the external-channel and guarded-outbound closeout. The existing LangGraph Unified Copilot is exposed to OpenClaw through a thin adapter and a real WhatsApp channel, while email drafts remain behind explicit human approval, outbound safety validation, and duplicate-send protection. Weekly Market Report requests reuse the existing market route and trend model rather than creating a parallel reporting agent. Real Gmail delivery and real WhatsApp E2E flows were both validated.
+
+Final regression validation completed with **268 passing automated tests**. Manual E2E validation additionally covered the Streamlit search/knowledge/market/mixed workflows, weekly market report generation, Gmail OAuth + real delivery + duplicate-send protection, and real WhatsApp knowledge/market/mixed requests through OpenClaw.
