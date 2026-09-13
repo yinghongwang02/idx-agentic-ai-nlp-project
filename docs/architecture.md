@@ -1,5 +1,13 @@
 # System Architecture
 
+> **Architecture snapshot:** This document captures the production-style MVP
+> architecture established in Week 6. Several extensions described here as
+> future work were implemented in later project phases, including semantic and
+> hybrid retrieval, document-aware RAG, unified multi-capability orchestration,
+> OpenClaw runtime integration, real WhatsApp messaging, and human-approved
+> Gmail delivery. See the project `README.md` for the final end-to-end
+> architecture and current system capabilities.
+
 ## 1. Overview
 
 This project implements a LangGraph-based real-estate search and
