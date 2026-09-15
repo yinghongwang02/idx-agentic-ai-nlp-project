@@ -73,6 +73,11 @@ def create_public_orchestrator() -> Orchestrator:
     active_listing_repository = DemoSearchRepository()
     sold_comp_repository = DemoSoldCompRepository()
 
+    # Shared public-safe market analysis
+    market_agent = MarketAgent(
+        repository=sold_comp_repository,
+    )
+
     # Property search
     search_agent = SearchAgent(
         repository=active_listing_repository,
@@ -80,6 +85,7 @@ def create_public_orchestrator() -> Orchestrator:
 
     property_search_workflow = PropertySearchGraph(
         search_agent=search_agent,
+        market_agent=market_agent,
     )
 
     search_adapter = PropertySearchAdapter(
@@ -87,10 +93,6 @@ def create_public_orchestrator() -> Orchestrator:
     )
 
     # Market analysis
-    market_agent = MarketAgent(
-        repository=sold_comp_repository,
-    )
-
     market_intent_agent = IntentAgent(
         memory=None,
     )
