@@ -129,7 +129,7 @@ def create_public_orchestrator() -> Orchestrator:
     knowledge_answerer = GroundedKnowledgeAnswerer(
         retriever=knowledge_retriever,
         llm_provider=llm_provider,
-        top_k=6,
+        top_k=3,
     )
 
     knowledge_adapter = KnowledgeAdapter(
