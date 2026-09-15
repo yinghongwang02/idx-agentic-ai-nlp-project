@@ -73,3 +73,50 @@ def test_intent_agent_parses_single_soft_preference():
 
     assert intent.keywords == ["garage"]
     assert intent.preferences == ["pool"]
+
+
+def test_intent_agent_parses_decimal_million_price_with_period():
+    agent = IntentAgent()
+
+    intent = agent.run(
+        "Find homes in Irvine under $1.5M."
+    )
+
+    assert intent.max_price == 1500000
+
+
+def test_intent_agent_parses_common_price_budget_formats():
+    agent = IntentAgent()
+
+    cases = [
+        ("Find homes under $1.7M.", 1700000),
+        ("Find homes under $900K.", 900000),
+        ("Find homes under $1,500,000.", 1500000),
+        ("Find homes under 1.5 million.", 1500000),
+    ]
+
+    for query, expected_price in cases:
+        intent = agent.run(query)
+
+        assert intent.max_price == expected_price
+
+
+def test_generic_homes_does_not_imply_single_family():
+    agent = IntentAgent()
+
+    intent = agent.run(
+        "Find homes in Irvine under $1.5M."
+    )
+
+    assert intent.property_type is None
+
+
+def test_explicit_single_family_still_parses_correctly():
+    agent = IntentAgent()
+
+    intent = agent.run(
+        "Find single family homes in Irvine under $1.5M."
+    )
+
+    assert intent.property_type == "SingleFamilyResidence"
+    assert intent.max_price == 1500000
