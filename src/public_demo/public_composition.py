@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
 
 from src.agents.intent_agent import IntentAgent
 from src.agents.market_agent import MarketAgent
@@ -22,17 +21,25 @@ from src.schemas.orchestrator_state_schema import (
 )
 from src.workflow.graph import PropertySearchGraph
 
+from pathlib import Path
 
-def _recommendation_not_enabled(
-    state: OrchestratorState,
-) -> list[Any]:
-    """
-    Temporary public-demo handler.
+from src.agents.comparable_value_agent import ComparableValueAgent
+from src.orchestration.adapters import RecommendationAdapter
+from src.orchestration.composition import resolve_explicit_listing_id
+from src.recommendation.hybrid_recommendation import (
+    HybridRecommendationService,
+)
+from src.recommendation.hybrid_similarity import (
+    SimilarListingRetriever,
+)
 
-    Replaced by the real HybridRecommendationService once the
-    synthetic listing embedding artifacts are generated.
-    """
-    return []
+PUBLIC_LISTING_EMBEDDINGS_PATH = Path(
+    "artifacts/public_demo/listing_embeddings.npy"
+)
+
+PUBLIC_LISTING_METADATA_PATH = Path(
+    "artifacts/public_demo/listing_metadata.jsonl"
+)
 
 
 def _knowledge_not_enabled(
@@ -90,6 +97,23 @@ def create_public_orchestrator() -> Orchestrator:
         intent_agent=market_intent_agent,
     )
 
+    # Similar-home recommendation
+    similarity_retriever = SimilarListingRetriever(
+        embeddings_path=PUBLIC_LISTING_EMBEDDINGS_PATH,
+        metadata_path=PUBLIC_LISTING_METADATA_PATH,
+    )
+
+    recommendation_service = HybridRecommendationService(
+        similarity_retriever=similarity_retriever,
+        market_agent=market_agent,
+        comparable_value_agent=ComparableValueAgent(),
+    )
+
+    recommendation_adapter = RecommendationAdapter(
+        service=recommendation_service,
+        listing_id_resolver=resolve_explicit_listing_id,
+    )
+
     # Top-level router + orchestrator
     router = IntentRouter()
 
@@ -97,6 +121,6 @@ def create_public_orchestrator() -> Orchestrator:
         router=router.route,
         search_handler=search_adapter,
         market_handler=market_adapter,
-        recommendation_handler=_recommendation_not_enabled,
+        recommendation_handler=recommendation_adapter,
         knowledge_handler=_knowledge_not_enabled,
     )
