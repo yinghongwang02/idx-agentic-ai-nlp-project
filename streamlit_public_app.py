@@ -90,6 +90,12 @@ def render_search_result(result: dict) -> None:
 
     recommendations = search_result.get("recommendations", [])
 
+    st.caption(
+        "Runtime debug — "
+        f"search_result keys: {list(search_result.keys())}; "
+        f"recommendations: {len(recommendations)}"
+    )
+
     if not recommendations:
         st.warning("No properties matched the current search criteria.")
         return
