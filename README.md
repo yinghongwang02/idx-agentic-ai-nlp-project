@@ -11,7 +11,7 @@ human-approved Gmail delivery, and an OpenClaw runtime connected to a
 real WhatsApp channel. The core LangGraph application is exposed through
 Streamlit, FastAPI, and external channel adapters, and the full local
 Streamlit system can also run in Docker with runtime-injected
-configuration and credentials.
+configuration and credentials. The final system also includes an offline LLM-as-Judge evaluation layer for end-to-end response-quality and routing validation.
 
 The system supports four complementary user workflows:
 
@@ -104,6 +104,11 @@ credentials, or OpenClaw/WhatsApp setup.
 -   **Unified Agentic Copilot** routing `search`, `market`, `recommend`,
     `knowledge`, and `mixed` requests, including LangGraph search +
     market fan-out/fan-in and partial-failure preservation.
+-   **LLM-as-Judge evaluation** over **20 representative real end-to-end
+    Unified Copilot queries**, achieving **100.0% route accuracy**, **4.40/5
+    correctness**, **4.60/5 relevance**, and **4.40/5 groundedness**; three
+    controlled negative cases achieved **100.0% targeted-degradation
+    detection**.
 -   **FastAPI service layer** exposing `/health`, `/search`,
     `/recommend`, and `/chat`, with route/agent/latency/error
     observability.
@@ -114,7 +119,7 @@ credentials, or OpenClaw/WhatsApp setup.
     MySQL service, bind-mounted Gmail OAuth credentials, and a minimized
     runtime artifact set that excludes development embedding checkpoints
     and secrets from the image.
--   **268 passing automated tests** across the full repository, plus
+-   **286 passing automated tests** across the full repository, plus
     real MySQL/OpenAI/FAISS, Gmail, Streamlit, OpenClaw, and WhatsApp
     end-to-end validation.
 -   **Human-approved outbound email workflow** with draft preview,
@@ -135,18 +140,18 @@ property analysis into reusable LangGraph subgraphs and adding bounded
 parallel execution, deterministic ranking, configurable scoring,
 regression validation, and quantitative performance benchmarking.
 
-  Area                                     Result
-  ---------------------------------------- -------------------------------------------
-  Candidate pool                           Up to 50 listings
-  Parallel execution                       Maximum 4 candidate analyses concurrently
-  Sequential median latency                50.60 s
-  Parallel median latency                  22.92 s
-  Speedup                                  2.21×
-  Median latency reduction                 54.7%
-  Successful candidate analyses            50 / 50
-  Candidate errors                         0
-  Sequential/parallel output consistency   PASS
-  Automated tests                          111 passed
+| Area | Result |
+| --- | --- |
+| Candidate pool | Up to 50 listings |
+| Parallel execution | Maximum 4 candidate analyses concurrently |
+| Sequential median latency | 50.60 s |
+| Parallel median latency | 22.92 s |
+| Speedup | 2.21× |
+| Median latency reduction | 54.7% |
+| Successful candidate analyses | 50 / 50 |
+| Candidate errors | 0 |
+| Sequential/parallel output consistency | PASS |
+| Automated tests | 111 passed |
 
 The latency benchmark measures the **candidate property-analysis
 stage**, not the full Streamlit request lifecycle. Both execution modes
@@ -216,12 +221,12 @@ or lifestyle characteristics.
 
 A lightweight retrieval benchmark compares four retrieval strategies:
 
-  Mode         Hard constraints   Soft semantic preferences
-  ------------ ------------------ ---------------------------
-  Structured   Yes                Limited
-  Keyword      Yes                Exact lexical matching
-  Semantic     No                 Strong
-  Hybrid       Yes                Strong
+| Mode | Hard constraints | Soft semantic preferences |
+| --- | --- | --- |
+| Structured | Yes | Limited |
+| Keyword | Yes | Exact lexical matching |
+| Semantic | No | Strong |
+| Hybrid | Yes | Strong |
 
 Full-corpus evaluation showed the expected trade-off: pure semantic
 retrieval captured qualitative intent but did not enforce structured MLS
@@ -290,16 +295,10 @@ flowchart TD
 
 The validation layer reports two distinct signals:
 
-  -----------------------------------------------------------------------
-  Signal                              Meaning
-  ----------------------------------- -----------------------------------
-  Comparable Value                    How the asking price compares with
-                                      recent sold-comparable evidence
-
-  Evidence Quality                    How strongly the available
-                                      comparable set supports that value
-                                      conclusion
-  -----------------------------------------------------------------------
+| Signal | Meaning |
+| --- | --- |
+| Comparable Value | How the asking price compares with recent sold-comparable evidence |
+| Evidence Quality | How strongly the available comparable set supports that value conclusion |
 
 Comparable evidence quality reflects factors such as match strictness,
 comparable count, and usable PPSF coverage. This keeps recommendation
@@ -360,12 +359,12 @@ diagnostics.
 
 A Top-K sensitivity check produced:
 
-  Metric                        Top-4        Top-6
-  --------------------------- ------- ------------
-  Top-1 source accuracy         88.9%        88.9%
-  Expected-source hit rate      94.4%   **100.0%**
-  Expected-section hit rate     83.3%    **88.9%**
-  Expected-content hit rate     94.4%        94.4%
+| Metric | Top-4 | Top-6 |
+| --- | ---: | ---: |
+| Top-1 source accuracy | 88.9% | 88.9% |
+| Expected-source hit rate | 94.4% | **100.0%** |
+| Expected-section hit rate | 83.3% | **88.9%** |
+| Expected-content hit rate | 94.4% | 94.4% |
 
 Top-6 is the current default because it recovered the missing mapping
 document for the cross-document list-to-close case. The unchanged Top-1
@@ -432,24 +431,13 @@ contains more than one intent.
 
 The router classifies each request into one of five routes:
 
-  -----------------------------------------------------------------------
-  Route                               Responsibility
-  ----------------------------------- -----------------------------------
-  `search`                            Natural-language property search
-                                      and recommendation workflow
-
-  `market`                            City-level sold-comparable market
-                                      analysis
-
-  `recommend`                         Similar-home recommendation for an
-                                      explicit listing ID
-
-  `knowledge`                         Document-aware Week 8 knowledge RAG
-
-  `mixed`                             Multi-capability request; currently
-                                      dispatches `search` + `market` in
-                                      parallel and merges both results
-  -----------------------------------------------------------------------
+| Route | Responsibility |
+| --- | --- |
+| `search` | Natural-language property search and recommendation workflow |
+| `market` | City-level sold-comparable market analysis |
+| `recommend` | Similar-home recommendation for an explicit listing ID |
+| `knowledge` | Document-aware Week 8 knowledge RAG |
+| `mixed` | Multi-capability request; currently dispatches `search` + `market` in parallel and merges both results |
 
 A single-capability request dispatches only the selected branch. For
 example, `What does DOM mean in real estate?` routes to `knowledge`,
@@ -515,12 +503,12 @@ dispatched routes, invoked agents, route reason, errors, and session ID.
 Week 9 also exposes the orchestration layer through a lightweight
 FastAPI service:
 
-  Endpoint            Purpose
-  ------------------- -----------------------------------------
-  `GET /health`       Service health/environment check
-  `POST /search`      Property-search entry point
-  `POST /recommend`   Similar-home recommendation entry point
-  `POST /chat`        Unified router/orchestrator entry point
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /health` | Service health/environment check |
+| `POST /search` | Property-search entry point |
+| `POST /recommend` | Similar-home recommendation entry point |
+| `POST /chat` | Unified router/orchestrator entry point |
 
 The API and Streamlit UI are complementary interfaces over the same core
 application composition. Streamlit remains the rich interactive demo,
@@ -578,6 +566,75 @@ flowchart TD
     A[What does DOM mean in real estate?] --> B[route = knowledge]
     B --> C[agents_invoked = knowledge]
     C --> D[grounded unified response]
+```
+
+## LLM-as-Judge Evaluation
+
+The final system includes an offline LLM-as-Judge evaluation layer for
+measuring response **correctness**, **relevance**, and **groundedness**
+against the user query and structured evidence produced by the underlying
+agents. The evaluator runs outside the production workflow and does not
+change routing, retrieval, recommendation, or response generation.
+
+The benchmark contains **20 representative end-to-end queries** spanning
+all five Unified Copilot routes: property search, market analysis,
+similar-home recommendation, knowledge RAG, and mixed multi-agent
+workflows. For these cases, the runner invokes the real
+`create_orchestrator()` composition root and evaluates the actual final
+response produced during that run rather than a prewritten answer.
+
+| Metric | Result |
+| --- | ---: |
+| End-to-end evaluation cases | 20 |
+| Route accuracy | **100.0%** |
+| Correctness | **4.40 / 5** |
+| Relevance | **4.60 / 5** |
+| Groundedness | **4.40 / 5** |
+| Controlled negative cases | 3 |
+| Targeted-degradation detection | **100.0%** |
+
+All **15 Search, Market, Recommendation, and Mixed cases** received 5/5
+for correctness, relevance, and groundedness. The lower aggregate scores
+were concentrated in three Knowledge RAG terminology cases, exposing
+knowledge-corpus coverage gaps. In contrast, an intentionally unsupported
+mortgage-rate forecasting query correctly triggered grounded abstention
+instead of an unsupported prediction.
+
+To verify that the judge was not simply assigning uniformly high scores,
+three controlled negative cases inject a factual contradiction, an
+irrelevant response, and a partially unsupported factual claim. The judge
+detected all three targeted degradations, including distinguishing a
+relevant but factually incorrect answer from an irrelevant answer and
+penalizing partial grounding.
+
+``` text
+Real E2E case
+User Query
+    -> Unified Router / Orchestrator
+    -> Search / Market / Recommend / Knowledge / Mixed capability
+    -> Structured Application Evidence + Actual Final Response
+    -> LLM Judge
+    -> Correctness / Relevance / Groundedness (1-5)
+
+Controlled negative case
+User Query + Structured Evidence + Intentionally Degraded Response
+    -> LLM Judge
+    -> Targeted low-dimension sensitivity check
+```
+
+The benchmark is a lightweight project-level quality and regression signal,
+not a claim of universal model accuracy or an independent human evaluation.
+The structured application output is treated as reference evidence for
+checking whether the final response faithfully represents the underlying
+system state; it is not presented as external real-world ground truth. The
+configured LLM may also be used elsewhere in the application, so the
+controlled negative cases provide a sensitivity check but do not eliminate
+all self-evaluation bias.
+
+Run the benchmark with:
+
+``` bash
+python -m scripts.run_llm_judge_eval
 ```
 
 ## Outbound Communication and External Runtime --- Weeks 10--11
@@ -1333,11 +1390,14 @@ python -m src.dev_evaluate_knowledge_retrieval --top-k 4      # sensitivity comp
 python -m src.dev_test_grounded_knowledge
 python -m src.dev_benchmark_candidate_parallel
 
+# Final Unified Copilot LLM-as-Judge benchmark
+python -m scripts.run_llm_judge_eval
+
 # Week 9 focused validation
 python -m pytest tests/test_orchestration_capabilities.py tests/test_orchestrator.py tests/test_orchestration_adapters.py tests/test_orchestration_composition.py tests/test_api.py tests/test_memory_store.py -v
 ```
 
-The final full repository regression suite completes with **268 passing
+The final full repository regression suite completes with **286 passing
 tests**. This includes the original property-search, compliance, memory,
 market, recommendation, retrieval, and Week 8 knowledge coverage plus
 the Week 9 router/orchestrator/API coverage and Weeks 10--11 email
@@ -1349,8 +1409,9 @@ repository/query behavior, market and recommendation scoring,
 sequential/parallel consistency, semantic/hybrid listing retrieval,
 similar-home scoring, knowledge retrieval evaluation, grounded
 generation, unified single/mixed routing, partial failures, API
-contracts, operational logging, and the lightweight memory-store
-interface.
+contracts, operational logging, the lightweight memory-store interface,
+and offline LLM-as-Judge scoring with controlled-negative sensitivity
+checks.
 
 ## Repository Structure
 
@@ -1366,7 +1427,7 @@ src/
 ├── app/             # Streamlit UI, including Email Approval / delivery workflow
 ├── communication/   # Approval, outbound safety, Mock/Gmail channels, WhatsApp boundaries
 ├── embeddings/      # Listing embedding utilities
-├── evaluation/      # Retrieval evaluation cases and metrics
+├── evaluation/      # Retrieval metrics + LLM-as-Judge evaluator
 ├── knowledge/       # Grounded knowledge answering
 ├── memory/          # Search memory + pluggable orchestration MemoryStore
 ├── orchestration/   # Unified router, adapters, composition root, LangGraph orchestrator
@@ -1380,7 +1441,11 @@ openclaw/
 └── idx-real-estate-copilot/
     └── SKILL.md      # OpenClaw skill delegating to the Unified Copilot adapter
 
+eval/
+└── llm_judge_cases.json          # 20 E2E + 3 controlled-negative judge cases
+
 scripts/
+├── run_llm_judge_eval.py         # Unified Copilot E2E + judge-sensitivity benchmark
 ├── openclaw_copilot_adapter.py  # OpenClaw → LangGraph composition-root bridge
 ├── authorize_gmail.py           # Local Gmail OAuth authorization / token generation
 └── smoke_send_gmail.py          # Explicit real Gmail provider smoke test
@@ -1390,6 +1455,7 @@ secrets/                       # Local-only; excluded from version control
 └── gmail_token.json           # Authorized Gmail OAuth token
 
 tests/
+├── test_llm_judge.py
 ├── test_orchestrator.py
 ├── test_router.py
 ├── test_market_trend.py
@@ -1473,7 +1539,16 @@ validation covered mixed search + market orchestration, full-corpus
 similar-home recommendation after runtime-artifact pruning, and
 human-approved real Gmail delivery.
 
-Final regression validation completed with **268 passing automated
+A final offline LLM-as-Judge benchmark expands Unified Copilot validation
+to **20 representative end-to-end queries** across all five routes. The
+run achieved **100.0% route accuracy**, **4.40/5 correctness**, **4.60/5
+relevance**, and **4.40/5 groundedness**. All 15 non-knowledge cases
+received 5/5 across all three response-quality dimensions; three Knowledge
+RAG terminology cases exposed corpus-coverage gaps, while an unsupported
+forecasting query correctly abstained. Three controlled negative cases
+also achieved **100.0% targeted-degradation detection**.
+
+Final regression validation completed with **286 passing automated
 tests**. Manual E2E validation additionally covered the Streamlit
 search/knowledge/market/mixed workflows, weekly market report
 generation, Gmail OAuth + real delivery + duplicate-send protection, and

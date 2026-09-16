@@ -1,0 +1,178 @@
+[
+  {
+    "id": "knowledge_dom",
+    "type": "e2e",
+    "difficulty": "easy",
+    "query": "What does DOM mean in real estate?",
+    "expected_route": "knowledge"
+  },
+  {
+    "id": "knowledge_mls",
+    "type": "e2e",
+    "difficulty": "easy",
+    "query": "What does MLS mean in real estate?",
+    "expected_route": "knowledge"
+  },
+  {
+    "id": "knowledge_contingent",
+    "type": "e2e",
+    "difficulty": "medium",
+    "query": "What does contingent mean in a real estate listing?",
+    "expected_route": "knowledge"
+  },
+  {
+    "id": "knowledge_listing_status",
+    "type": "e2e",
+    "difficulty": "medium",
+    "query": "What does Active Under Contract mean in a property listing?",
+    "expected_route": "knowledge"
+  },
+  {
+    "id": "knowledge_unsupported",
+    "type": "e2e",
+    "difficulty": "hard",
+    "query": "What will mortgage rates be exactly one year from today?",
+    "expected_route": "knowledge"
+  },
+
+  {
+    "id": "search_irvine_budget",
+    "type": "e2e",
+    "difficulty": "easy",
+    "query": "Find homes in Irvine under 1700000.",
+    "expected_route": "search"
+  },
+  {
+    "id": "search_pasadena_beds",
+    "type": "e2e",
+    "difficulty": "medium",
+    "query": "Find homes in Pasadena with at least 3 bedrooms.",
+    "expected_route": "search"
+  },
+  {
+    "id": "search_irvine_multi_constraint",
+    "type": "e2e",
+    "difficulty": "medium",
+    "query": "Find homes in Irvine under 2000000 with at least 3 bedrooms and 2 bathrooms.",
+    "expected_route": "search"
+  },
+  {
+    "id": "search_townhouse",
+    "type": "e2e",
+    "difficulty": "medium",
+    "query": "Find townhouses under 1500000.",
+    "expected_route": "search"
+  },
+  {
+    "id": "search_no_result",
+    "type": "e2e",
+    "difficulty": "hard",
+    "query": "Find homes in Irvine under 100000 with at least 5 bedrooms.",
+    "expected_route": "search"
+  },
+
+  {
+    "id": "market_irvine",
+    "type": "e2e",
+    "difficulty": "easy",
+    "query": "Tell me about the Irvine housing market.",
+    "expected_route": "market"
+  },
+  {
+    "id": "market_pasadena",
+    "type": "e2e",
+    "difficulty": "easy",
+    "query": "Tell me about the Pasadena housing market.",
+    "expected_route": "market"
+  },
+  {
+    "id": "market_pasadena_trend",
+    "type": "e2e",
+    "difficulty": "medium",
+    "query": "What is the recent housing market trend in Pasadena?",
+    "expected_route": "market"
+  },
+
+  {
+    "id": "recommend_known_listing",
+    "type": "e2e",
+    "difficulty": "easy",
+    "query": "Show me homes similar to listing 1156947453.",
+    "expected_route": "recommend"
+  },
+  {
+    "id": "recommend_second_listing",
+    "type": "e2e",
+    "difficulty": "medium",
+    "query": "Find similar homes to listing 1000314732.",
+    "expected_route": "recommend"
+  },
+  {
+    "id": "recommend_third_listing",
+    "type": "e2e",
+    "difficulty": "medium",
+    "query": "Show me properties similar to listing 1003628672.",
+    "expected_route": "recommend"
+  },
+
+  {
+    "id": "mixed_irvine",
+    "type": "e2e",
+    "difficulty": "medium",
+    "query": "Find homes in Irvine under 1700000 and tell me about the local market.",
+    "expected_route": "mixed"
+  },
+  {
+    "id": "mixed_pasadena",
+    "type": "e2e",
+    "difficulty": "medium",
+    "query": "Find homes in Pasadena under 1500000 and tell me about the local housing market.",
+    "expected_route": "mixed"
+  },
+  {
+    "id": "mixed_irvine_constraints",
+    "type": "e2e",
+    "difficulty": "hard",
+    "query": "Find homes in Irvine under 2000000 with at least 3 bedrooms and tell me about the local market.",
+    "expected_route": "mixed"
+  },
+  {
+    "id": "mixed_pasadena_constraints",
+    "type": "e2e",
+    "difficulty": "hard",
+    "query": "Find homes in Pasadena with at least 3 bedrooms and 2 bathrooms and tell me about the local market.",
+    "expected_route": "mixed"
+  },
+
+  {
+    "id": "incorrect_market",
+    "type": "controlled_negative",
+    "query": "Tell me about the Irvine housing market.",
+    "response": "The median close price in Irvine is $500,000.",
+    "evidence": {
+      "city": "Irvine",
+      "median_close_price": 1540000
+    },
+    "expected_low_dimension": "correctness"
+  },
+  {
+    "id": "irrelevant_answer",
+    "type": "controlled_negative",
+    "query": "What does DOM mean in real estate?",
+    "response": "Irvine has many residential communities and parks.",
+    "evidence": {
+      "definition": "DOM means Days on Market."
+    },
+    "expected_low_dimension": "relevance"
+  },
+  {
+    "id": "ungrounded_claim",
+    "type": "controlled_negative",
+    "query": "Tell me about the Irvine housing market.",
+    "response": "The Irvine market is warming, and mortgage rates will fall sharply next month.",
+    "evidence": {
+      "recent_market_direction": "warming"
+    },
+    "expected_low_dimension": "groundedness"
+  }
+]
