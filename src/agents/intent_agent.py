@@ -40,10 +40,7 @@ class IntentAgent:
         "single-family": "SingleFamilyResidence",
         "single family home": "SingleFamilyResidence",
         "single family homes": "SingleFamilyResidence",
-        "house": "SingleFamilyResidence",
-        "houses": "SingleFamilyResidence",
-        "home": "SingleFamilyResidence",
-        "homes": "SingleFamilyResidence",
+
 
         # Manufactured
         "manufactured": "ManufacturedOnLand",
@@ -145,9 +142,13 @@ class IntentAgent:
         return None
 
     def _parse_max_price(self, query_lower: str) -> int | None:
+        number_pattern = r"(\d+(?:,\d{3})*(?:\.\d+)?)"
+
         patterns = [
-            r"(?:under|below|less than|max|up to)\s*\$?([\d,.]+)\s*(k|m|million)?",
-            r"\$?([\d,.]+)\s*(k|m|million)\s*(?:budget|max)?",
+            rf"(?:under|below|less than|max|up to)\s*\$?"
+            rf"{number_pattern}\s*(k|m|million)?\b",
+            rf"\$?{number_pattern}\s*(k|m|million)\b"
+            rf"\s*(?:budget|max)?",
         ]
 
         for pattern in patterns:
@@ -155,7 +156,9 @@ class IntentAgent:
             if not match:
                 continue
 
-            value = float(match.group(1).replace(",", ""))
+            value = float(
+                match.group(1).replace(",", "")
+            )
             suffix = match.group(2)
 
             if suffix == "k":
