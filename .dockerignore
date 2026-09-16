@@ -1,0 +1,64 @@
+# Git
+.git
+.gitignore
+
+# Python virtual environments
+.venv
+venv
+env
+
+# Python cache / test cache
+__pycache__
+*.py[cod]
+.pytest_cache
+.coverage
+htmlcov
+
+# Local environment variables
+.env
+.env.*
+
+# Keep the safe example env file
+!.env.example
+
+# Secrets / credentials
+secrets/
+*.pem
+*.key
+*.crt
+
+# IDE / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Development-only files
+notebooks/
+requirements-dev.txt
+
+# Test artifacts
+.pytest_cache/
+
+# ------------------------------------------------------------
+# Embedding build / development artifacts
+# Keep only runtime artifacts required by the full Streamlit app.
+# ------------------------------------------------------------
+
+# Full-corpus FAISS index is used by dev/evaluation tooling,
+# not by the production Streamlit/orchestrator runtime.
+artifacts/embeddings/full/listing_embeddings.faiss
+
+# Intermediate checkpoints used only while generating embeddings.
+artifacts/embeddings/full/checkpoints/
+artifacts/embeddings/full/checkpoint_state.json
+
+# Development / validation embedding sets.
+artifacts/embeddings/checkpoint_test_*/
+artifacts/embeddings/sample_*/
+
+# Legacy root-level embedding artifacts.
+# Production runtime uses artifacts/embeddings/full/* instead.
+artifacts/embeddings/listing_embeddings.npy
+artifacts/embeddings/listing_embeddings.faiss
+artifacts/embeddings/listing_metadata.jsonl
