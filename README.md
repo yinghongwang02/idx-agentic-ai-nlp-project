@@ -6,7 +6,12 @@ A production-style LangGraph-based real-estate copilot that combines
 structured MLS retrieval, full-corpus semantic search, hybrid
 recommendation, document-aware knowledge RAG, session memory, Fair
 Housing guardrails, sold-comparable market analysis, bounded parallel
-property analysis, a unified multi-capability orchestrator, human-approved Gmail delivery, and an OpenClaw runtime connected to a real WhatsApp channel. The core LangGraph application is exposed through Streamlit, FastAPI, and external channel adapters.
+property analysis, a unified multi-capability orchestrator,
+human-approved Gmail delivery, and an OpenClaw runtime connected to a
+real WhatsApp channel. The core LangGraph application is exposed through
+Streamlit, FastAPI, and external channel adapters, and the full local
+Streamlit system can also run in Docker with runtime-injected
+configuration and credentials.
 
 The system supports four complementary user workflows:
 
@@ -28,14 +33,20 @@ The system supports four complementary user workflows:
 > This repository contains my individual project work for the IDX
 > Exchange Summer 2026 internship. Internal MLS data is not included.
 
-
 ## Public Streamlit Portfolio Demo
 
 **Live demo:** https://idx-agentic-ai-copilot.streamlit.app/
 
-A privacy-safe version of the Real Estate Agentic Copilot is deployed on Streamlit Community Cloud through `streamlit_public_app.py`. The hosted application demonstrates five core capabilities: structured property search, market intelligence, hybrid similar-home recommendation, grounded knowledge RAG, and unified multi-capability orchestration.
+A privacy-safe version of the Real Estate Agentic Copilot is deployed on
+Streamlit Community Cloud through `streamlit_public_app.py`. The hosted
+application demonstrates five core capabilities: structured property
+search, market intelligence, hybrid similar-home recommendation,
+grounded knowledge RAG, and unified multi-capability orchestration.
 
-> **Portfolio demo environment:** The hosted deployment intentionally uses synthetic real-estate data and public-safe knowledge artifacts. Private MLS data, database credentials, OAuth secrets, and production messaging integrations are not included in the hosted environment.
+> **Portfolio demo environment:** The hosted deployment intentionally
+> uses synthetic real-estate data and public-safe knowledge artifacts.
+> Private MLS data, database credentials, OAuth secrets, and production
+> messaging integrations are not included in the hosted environment.
 
 The hosted demo and the full local system therefore use different data and integration boundaries by design:
 
@@ -49,17 +60,25 @@ The hosted demo and the full local system therefore use different data and integ
 | WhatsApp / OpenClaw | Disabled | Real WhatsApp channel through the local OpenClaw runtime |
 | Secrets / private infrastructure | Excluded | Supplied locally through environment variables and local credential files |
 
-This separation keeps the public deployment reproducible and safe to share while preserving the architecture of the production-style local implementation. The public composition root injects synthetic repositories and public-safe retrieval artifacts into the same capability boundaries used by the application rather than exposing private MLS infrastructure. As a result, the hosted app is intended to demonstrate system behavior and architecture, not the scale or contents of the private/local datasets.
+This separation keeps the public deployment reproducible and safe to
+share while preserving the architecture of the production-style local
+implementation. The public composition root injects synthetic
+repositories and public-safe retrieval artifacts into the same
+capability boundaries used by the application rather than exposing
+private MLS infrastructure. As a result, the hosted app is intended to
+demonstrate system behavior and architecture, not the scale or contents
+of the private/local datasets.
 
 ### Run the Public Demo Locally
 
-```bash
+``` bash
 pip install -r requirements.txt
 # Configure OPENAI_API_KEY in the environment
 streamlit run streamlit_public_app.py
 ```
 
-The public demo does not require the local MySQL database, Gmail OAuth credentials, or OpenClaw/WhatsApp setup.
+The public demo does not require the local MySQL database, Gmail OAuth
+credentials, or OpenClaw/WhatsApp setup.
 
 ## Key Engineering Highlights
 
@@ -90,10 +109,24 @@ The public demo does not require the local MySQL database, Gmail OAuth credentia
     observability.
 -   **Pluggable session-memory boundary** through a lightweight
     `MemoryStore` abstraction for future persistent backends.
--   **268 passing automated tests** across the full repository, plus real MySQL/OpenAI/FAISS, Gmail, Streamlit, OpenClaw, and WhatsApp end-to-end validation.
--   **Human-approved outbound email workflow** with draft preview, explicit approval/rejection, outbound safety checks, real Gmail API delivery, and duplicate-send protection.
--   **OpenClaw runtime integration with real WhatsApp** while preserving LangGraph as the source of truth; WhatsApp requests are routed through a thin Python adapter into the Unified Copilot.
--   **Weekly Market Report** requests reuse the existing market route and MarketAgent trend data, producing channel-friendly reports with comparable-sales, price, DOM, sale-to-list, PPSF, and market-direction signals.
+-   **Dockerized full local Streamlit runtime** with runtime environment
+    injection, `host.docker.internal` connectivity to the Windows-hosted
+    MySQL service, bind-mounted Gmail OAuth credentials, and a minimized
+    runtime artifact set that excludes development embedding checkpoints
+    and secrets from the image.
+-   **268 passing automated tests** across the full repository, plus
+    real MySQL/OpenAI/FAISS, Gmail, Streamlit, OpenClaw, and WhatsApp
+    end-to-end validation.
+-   **Human-approved outbound email workflow** with draft preview,
+    explicit approval/rejection, outbound safety checks, real Gmail API
+    delivery, and duplicate-send protection.
+-   **OpenClaw runtime integration with real WhatsApp** while preserving
+    LangGraph as the source of truth; WhatsApp requests are routed
+    through a thin Python adapter into the Unified Copilot.
+-   **Weekly Market Report** requests reuse the existing market route
+    and MarketAgent trend data, producing channel-friendly reports with
+    comparable-sales, price, DOM, sale-to-list, PPSF, and
+    market-direction signals.
 
 ## Core MVP Performance --- Week 6
 
@@ -102,18 +135,18 @@ property analysis into reusable LangGraph subgraphs and adding bounded
 parallel execution, deterministic ranking, configurable scoring,
 regression validation, and quantitative performance benchmarking.
 
-| Area | Result |
-| --- | --- |
-| Candidate pool | Up to 50 listings |
-| Parallel execution | Maximum 4 candidate analyses concurrently |
-| Sequential median latency | 50.60 s |
-| Parallel median latency | 22.92 s |
-| Speedup | 2.21× |
-| Median latency reduction | 54.7% |
-| Successful candidate analyses | 50 / 50 |
-| Candidate errors | 0 |
-| Sequential/parallel output consistency | PASS |
-| Automated tests | 111 passed |
+  Area                                     Result
+  ---------------------------------------- -------------------------------------------
+  Candidate pool                           Up to 50 listings
+  Parallel execution                       Maximum 4 candidate analyses concurrently
+  Sequential median latency                50.60 s
+  Parallel median latency                  22.92 s
+  Speedup                                  2.21×
+  Median latency reduction                 54.7%
+  Successful candidate analyses            50 / 50
+  Candidate errors                         0
+  Sequential/parallel output consistency   PASS
+  Automated tests                          111 passed
 
 The latency benchmark measures the **candidate property-analysis
 stage**, not the full Streamlit request lifecycle. Both execution modes
@@ -123,7 +156,7 @@ recommendation outputs were checked after every pair.
 
 Raw benchmark results are available in:
 
-```text
+``` text
 artifacts/benchmarks/candidate_parallel_baseline.csv
 ```
 
@@ -137,7 +170,7 @@ the existing property-analysis subgraph.
 
 The system builds semantic representations for the active MLS corpus:
 
-```mermaid
+``` mermaid
 flowchart TD
     A[MLS Active Listings] --> B[Canonical Listing Text]
     B --> C[EmbeddingProvider]
@@ -163,7 +196,7 @@ or property type.
 The hybrid retrieval path therefore separates eligibility from
 preference ranking:
 
-```mermaid
+``` mermaid
 flowchart TD
     A[Natural-Language Request] --> B[Structured MLS Constraints]
     B --> C[MySQL Candidate Retrieval]
@@ -183,12 +216,12 @@ or lifestyle characteristics.
 
 A lightweight retrieval benchmark compares four retrieval strategies:
 
-| Mode | Hard constraints | Soft semantic preferences |
-| --- | --- | --- |
-| Structured | Yes | Limited |
-| Keyword | Yes | Exact lexical matching |
-| Semantic | No | Strong |
-| Hybrid | Yes | Strong |
+  Mode         Hard constraints   Soft semantic preferences
+  ------------ ------------------ ---------------------------
+  Structured   Yes                Limited
+  Keyword      Yes                Exact lexical matching
+  Semantic     No                 Strong
+  Hybrid       Yes                Strong
 
 Full-corpus evaluation showed the expected trade-off: pure semantic
 retrieval captured qualitative intent but did not enforce structured MLS
@@ -201,7 +234,7 @@ coverage.
 
 Raw evaluation output:
 
-```text
+``` text
 artifacts/benchmarks/retrieval_comparison_full.csv
 ```
 
@@ -217,7 +250,7 @@ rules, computes property-attribute and semantic similarity across the
 full active-listing embedding corpus, and returns the highest-ranked
 compatible listings.
 
-```mermaid
+``` mermaid
 flowchart TD
     A[Target Listing] --> B[Full Embedded Active-Listing Corpus]
     B --> C[Property-Type Compatibility]
@@ -246,7 +279,7 @@ questions. After the Top-K similar active listings are selected, each
 recommendation is independently validated against recent sold
 comparables using the existing market-analysis components.
 
-```mermaid
+``` mermaid
 flowchart TD
     A[Top-K Similar Listing] --> B[MarketAgent]
     B --> C[Recent Sold Comparables]
@@ -257,10 +290,16 @@ flowchart TD
 
 The validation layer reports two distinct signals:
 
-| Signal | Meaning |
-| --- | --- |
-| Comparable Value | How the asking price compares with recent sold-comparable evidence |
-| Evidence Quality | How strongly the available comparable set supports that value conclusion |
+  -----------------------------------------------------------------------
+  Signal                              Meaning
+  ----------------------------------- -----------------------------------
+  Comparable Value                    How the asking price compares with
+                                      recent sold-comparable evidence
+
+  Evidence Quality                    How strongly the available
+                                      comparable set supports that value
+                                      conclusion
+  -----------------------------------------------------------------------
 
 Comparable evidence quality reflects factors such as match strictness,
 comparable count, and usable PPSF coverage. This keeps recommendation
@@ -298,7 +337,7 @@ These documents are used as project knowledge sources; the
 project-maintained MLS mapping is not presented as official IDX MLS
 documentation.
 
-```mermaid
+``` mermaid
 flowchart TD
     A[Knowledge Documents] --> B[Chunk + Source/Section Metadata]
     B --> C[Embeddings + FAISS]
@@ -321,12 +360,12 @@ diagnostics.
 
 A Top-K sensitivity check produced:
 
-| Metric | Top-4 | Top-6 |
-| --- | ---: | ---: |
-| Top-1 source accuracy | 88.9% | 88.9% |
-| Expected-source hit rate | 94.4% | **100.0%** |
-| Expected-section hit rate | 83.3% | **88.9%** |
-| Expected-content hit rate | 94.4% | 94.4% |
+  Metric                        Top-4        Top-6
+  --------------------------- ------- ------------
+  Top-1 source accuracy         88.9%        88.9%
+  Expected-source hit rate      94.4%   **100.0%**
+  Expected-section hit rate     83.3%    **88.9%**
+  Expected-content hit rate     94.4%        94.4%
 
 Top-6 is the current default because it recovered the missing mapping
 document for the cross-document list-to-close case. The unchanged Top-1
@@ -344,7 +383,7 @@ and Streamlit Knowledge Assistant. The evaluator keeps `--top-k`
 configurable so the sensitivity result is reproducible without changing
 code:
 
-```bash
+``` bash
 # Current/default evaluation depth
 python -m src.dev_evaluate_knowledge_retrieval --top-k 6
 
@@ -393,13 +432,24 @@ contains more than one intent.
 
 The router classifies each request into one of five routes:
 
-| Route | Responsibility |
-| --- | --- |
-| `search` | Natural-language property search and recommendation workflow |
-| `market` | City-level sold-comparable market analysis |
-| `recommend` | Similar-home recommendation for an explicit listing ID |
-| `knowledge` | Document-aware Week 8 knowledge RAG |
-| `mixed` | Multi-capability request; currently dispatches `search` + `market` in parallel and merges both results |
+  -----------------------------------------------------------------------
+  Route                               Responsibility
+  ----------------------------------- -----------------------------------
+  `search`                            Natural-language property search
+                                      and recommendation workflow
+
+  `market`                            City-level sold-comparable market
+                                      analysis
+
+  `recommend`                         Similar-home recommendation for an
+                                      explicit listing ID
+
+  `knowledge`                         Document-aware Week 8 knowledge RAG
+
+  `mixed`                             Multi-capability request; currently
+                                      dispatches `search` + `market` in
+                                      parallel and merges both results
+  -----------------------------------------------------------------------
 
 A single-capability request dispatches only the selected branch. For
 example, `What does DOM mean in real estate?` routes to `knowledge`,
@@ -410,7 +460,7 @@ while `Find homes in Irvine under $1.5M` routes to `search`.
 Mixed search-and-market requests use real graph fan-out/fan-in rather
 than calling the two capabilities sequentially inside one node:
 
-```mermaid
+``` mermaid
 flowchart TD
     START([START]) --> ROUTER[router]
     ROUTER --> SEARCH[search]
@@ -436,7 +486,7 @@ return useful output.
 The unified graph talks to four thin adapters instead of importing
 UI-specific or capability-specific behavior into the orchestrator:
 
-```mermaid
+``` mermaid
 flowchart TD
     O[Unified Orchestrator]
     O --> S[PropertySearchAdapter]
@@ -465,12 +515,12 @@ dispatched routes, invoked agents, route reason, errors, and session ID.
 Week 9 also exposes the orchestration layer through a lightweight
 FastAPI service:
 
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /health` | Service health/environment check |
-| `POST /search` | Property-search entry point |
-| `POST /recommend` | Similar-home recommendation entry point |
-| `POST /chat` | Unified router/orchestrator entry point |
+  Endpoint            Purpose
+  ------------------- -----------------------------------------
+  `GET /health`       Service health/environment check
+  `POST /search`      Property-search entry point
+  `POST /recommend`   Similar-home recommendation entry point
+  `POST /chat`        Unified router/orchestrator entry point
 
 The API and Streamlit UI are complementary interfaces over the same core
 application composition. Streamlit remains the rich interactive demo,
@@ -486,7 +536,7 @@ agents, final response, structured errors, and session ID.
 API orchestration completion is logged with operational metadata
 including:
 
-```text
+``` text
 route
 agents_invoked
 latency_ms
@@ -523,7 +573,7 @@ path, and FastAPI `/chat` endpoint.
 
 A representative API smoke request:
 
-```mermaid
+``` mermaid
 flowchart TD
     A[What does DOM mean in real estate?] --> B[route = knowledge]
     B --> C[agents_invoked = knowledge]
@@ -532,13 +582,22 @@ flowchart TD
 
 ## Outbound Communication and External Runtime --- Weeks 10--11
 
-Weeks 10--11 extend the Week 9 orchestrator without replacing its internal LangGraph workflows. The closeout work adds a guarded email-delivery path and an external OpenClaw/WhatsApp runtime boundary. The Unified Copilot remains the source of truth for routing, retrieval, market analysis, recommendations, compliance, and grounded knowledge responses.
+Weeks 10--11 extend the Week 9 orchestrator without replacing its
+internal LangGraph workflows. The closeout work adds a guarded
+email-delivery path and an external OpenClaw/WhatsApp runtime boundary.
+The Unified Copilot remains the source of truth for routing, retrieval,
+market analysis, recommendations, compliance, and grounded knowledge
+responses.
 
 ### Email Draft, Human Approval, and Safe Gmail Delivery
 
-The email workflow can generate either a property-recommendation digest or a weekly market report from real Unified Copilot results. Every draft begins in `pending_approval` state. Delivery is blocked until an explicit human approval record exists and the outbound safety guard passes.
+The email workflow can generate either a property-recommendation digest
+or a weekly market report from real Unified Copilot results. Every draft
+begins in `pending_approval` state. Delivery is blocked until an
+explicit human approval record exists and the outbound safety guard
+passes.
 
-```mermaid
+``` mermaid
 flowchart TD
     U[Unified Copilot Result] --> D[EmailDraftAgent]
     D --> P[pending_approval]
@@ -552,27 +611,50 @@ flowchart TD
     G --> L[Lock Draft / Prevent Duplicate Send]
 ```
 
-The Streamlit Email Approval workflow exposes the generated subject/body, recipient, draft type, approval decision, decision timestamp, safety result, and delivery result. Real Gmail delivery uses OAuth credentials stored outside source control. A successful delivery returns the Gmail provider message ID. The workflow locks a draft after a human decision or send attempt so the same approved draft cannot be delivered repeatedly.
+The Streamlit Email Approval workflow exposes the generated
+subject/body, recipient, draft type, approval decision, decision
+timestamp, safety result, and delivery result. Real Gmail delivery uses
+OAuth credentials stored outside source control. A successful delivery
+returns the Gmail provider message ID. The workflow locks a draft after
+a human decision or send attempt so the same approved draft cannot be
+delivered repeatedly.
 
-Real Gmail validation covered OAuth authorization, explicit approval, outbound safety, successful API delivery, and duplicate-send prevention. A final smoke test successfully delivered through Gmail after explicit approval and returned a provider message ID.
+Real Gmail validation covered OAuth authorization, explicit approval,
+outbound safety, successful API delivery, and duplicate-send prevention.
+A final smoke test successfully delivered through Gmail after explicit
+approval and returned a provider message ID.
 
 ### Weekly Market Report
 
-Weekly reports reuse the existing `market` route rather than introducing a duplicate reporting agent. A request such as:
+Weekly reports reuse the existing `market` route rather than introducing
+a duplicate reporting agent. A request such as:
 
-```text
+``` text
 Give me a weekly market report for Irvine.
 ```
 
-routes to `MarketAgent`, which supplies the existing `MarketSummary` and recent `MarketTrend`. The report presentation includes available comparable-sales count, median close price, average days on market, average sale-to-list ratio, average PPSF, market direction, and recent trend changes. The same market data can be presented conversationally through the Unified Copilot/OpenClaw path or formatted as a `weekly_market_report` email draft behind the approval workflow.
+routes to `MarketAgent`, which supplies the existing `MarketSummary` and
+recent `MarketTrend`. The report presentation includes available
+comparable-sales count, median close price, average days on market,
+average sale-to-list ratio, average PPSF, market direction, and recent
+trend changes. The same market data can be presented conversationally
+through the Unified Copilot/OpenClaw path or formatted as a
+`weekly_market_report` email draft behind the approval workflow.
 
-A final Irvine E2E check returned 500 recent comparable sales, a $1.54M median close price, 36.1 average DOM, a 98.3% sale-to-list ratio, approximately $809 PPSF, a `warming` direction, and a +2.7% recent median-price change. These values are local-data validation results, not general market claims.
+A final Irvine E2E check returned 500 recent comparable sales, a \$1.54M
+median close price, 36.1 average DOM, a 98.3% sale-to-list ratio,
+approximately \$809 PPSF, a `warming` direction, and a +2.7% recent
+median-price change. These values are local-data validation results, not
+general market claims.
 
 ### OpenClaw Runtime and Real WhatsApp
 
-OpenClaw is integrated as an external runtime/channel adapter; it does not replace the LangGraph Unified Copilot. The repository includes an IDX real-estate OpenClaw skill and a thin CLI adapter that invokes the existing composition root and returns structured orchestration output.
+OpenClaw is integrated as an external runtime/channel adapter; it does
+not replace the LangGraph Unified Copilot. The repository includes an
+IDX real-estate OpenClaw skill and a thin CLI adapter that invokes the
+existing composition root and returns structured orchestration output.
 
-```mermaid
+``` mermaid
 flowchart TD
     PHONE[WhatsApp User] --> WA[Real WhatsApp Channel]
     WA --> OC[OpenClaw Runtime]
@@ -593,18 +675,34 @@ flowchart TD
     WA --> PHONE
 ```
 
-The OpenClaw skill treats the Unified Copilot as the source of truth: it does not query the IDX MySQL database directly, bypass compliance/routing, invent listings or market statistics, or perform email delivery. Outbound email remains isolated behind the explicit approval and safety workflow. OpenClaw provides channel-aware presentation of the grounded Unified Copilot response for WhatsApp.
+The OpenClaw skill treats the Unified Copilot as the source of truth: it
+does not query the IDX MySQL database directly, bypass
+compliance/routing, invent listings or market statistics, or perform
+email delivery. Outbound email remains isolated behind the explicit
+approval and safety workflow. OpenClaw provides channel-aware
+presentation of the grounded Unified Copilot response for WhatsApp.
 
-The real WhatsApp channel was paired and validated as enabled, configured, linked, running, connected, and healthy. Final E2E regression covered a knowledge question, a weekly Irvine market report, and a mixed Irvine search + market request. The mixed request exercised the full phone → WhatsApp → OpenClaw → skill → Python adapter → LangGraph fan-out/fan-in → OpenClaw → WhatsApp path without exposing raw JSON or tracebacks.
-
+The real WhatsApp channel was paired and validated as enabled,
+configured, linked, running, connected, and healthy. Final E2E
+regression covered a knowledge question, a weekly Irvine market report,
+and a mixed Irvine search + market request. The mixed request exercised
+the full phone → WhatsApp → OpenClaw → skill → Python adapter →
+LangGraph fan-out/fan-in → OpenClaw → WhatsApp path without exposing raw
+JSON or tracebacks.
 
 ## Architecture
 
 ### End-to-End System Architecture
 
-The final system has one shared LangGraph application core with multiple user-facing and outbound interfaces. Streamlit and FastAPI call the application directly, while real WhatsApp traffic enters through OpenClaw and its thin Python adapter. Email is deliberately asymmetric: the Unified Copilot may generate source content for a draft, but no email is delivered until the separate human-approval and outbound-safety path authorizes either mock or real Gmail delivery.
+The final system has one shared LangGraph application core with multiple
+user-facing and outbound interfaces. Streamlit and FastAPI call the
+application directly, while real WhatsApp traffic enters through
+OpenClaw and its thin Python adapter. Email is deliberately asymmetric:
+the Unified Copilot may generate source content for a draft, but no
+email is delivered until the separate human-approval and outbound-safety
+path authorizes either mock or real Gmail delivery.
 
-```mermaid
+``` mermaid
 flowchart LR
     USER[User]
 
@@ -698,11 +796,18 @@ Duplicate-Send Protection]
     CHANNEL --> GMAIL --> LOCK
 ```
 
-This diagram highlights the main trust boundaries. OpenClaw is a channel/runtime layer rather than a second reasoning system, so WhatsApp requests still execute the same LangGraph composition root used by the application. Likewise, Gmail is not callable directly from the orchestrator: outbound delivery is isolated behind draft state, explicit human approval, safety validation, and workflow locking. This keeps inbound conversational orchestration separate from consequential outbound actions.
+This diagram highlights the main trust boundaries. OpenClaw is a
+channel/runtime layer rather than a second reasoning system, so WhatsApp
+requests still execute the same LangGraph composition root used by the
+application. Likewise, Gmail is not callable directly from the
+orchestrator: outbound delivery is isolated behind draft state, explicit
+human approval, safety validation, and workflow locking. This keeps
+inbound conversational orchestration separate from consequential
+outbound actions.
 
 ### Core Property-Search Workflow
 
-```mermaid
+``` mermaid
 flowchart TD
     U[User Query] --> QC[Query Compliance]
 
@@ -735,7 +840,7 @@ flowchart TD
 
 Each listing is analyzed through a reusable LangGraph subgraph:
 
-```mermaid
+``` mermaid
 flowchart TD
     START([Listing + PropertyIntent])
 
@@ -771,7 +876,7 @@ Week 7 adds retrieval and similar-home recommendation capabilities
 alongside the existing LangGraph property-search workflow rather than
 replacing the reusable property-analysis subgraph.
 
-```mermaid
+``` mermaid
 flowchart TD
     TARGET[Target Listing] --> GUARD[Property-Type Compatibility]
     GUARD --> STRUCT[Property-Attribute Similarity]
@@ -799,7 +904,7 @@ avoiding a second overlapping market-analysis path.
 The Week 9 layer coordinates existing capabilities without replacing
 their internal workflows:
 
-```mermaid
+``` mermaid
 flowchart TD
     START([User Query]) --> ROUTER[Unified Router]
 
@@ -831,7 +936,7 @@ fan-in.
 
 The parent workflow supports both execution modes:
 
-```text
+``` text
 Sequential mode
 Candidate 1 → Candidate 2 → ... → Candidate 50
 
@@ -841,7 +946,7 @@ Up to 4 candidate subgraphs execute concurrently
 
 A candidate failure is recorded as:
 
-```text
+``` text
 {
     listing_key: ...,
     error: ...
@@ -866,14 +971,14 @@ The performance harness:
 
 Measured runs:
 
-```text
+``` text
 Sequential: 52.13 s, 50.60 s, 50.59 s
 Parallel:   23.12 s, 22.92 s, 22.36 s
 ```
 
 Result:
 
-```text
+``` text
 50.60 s → 22.92 s
 54.7% lower median candidate-analysis latency
 2.21× speedup
@@ -888,7 +993,11 @@ speedup to each layer independently.
 
 ## Interactive Streamlit Application
 
-The Streamlit application now exposes five complementary workflows: **Property Search**, **Similar Home Recommendation**, **Knowledge Assistant**, **Unified Copilot**, and **Email Approval**. The first four are interactive retrieval/reasoning surfaces; the fifth is a guarded outbound workflow built from the latest real Unified Copilot result.
+The Streamlit application now exposes five complementary workflows:
+**Property Search**, **Similar Home Recommendation**, **Knowledge
+Assistant**, **Unified Copilot**, and **Email Approval**. The first four
+are interactive retrieval/reasoning surfaces; the fifth is a guarded
+outbound workflow built from the latest real Unified Copilot result.
 
 ### Property Search
 
@@ -979,27 +1088,47 @@ metadata in the sidebar.
 
 ### Email Approval
 
-The **Email Draft, Human Approval & Safe Delivery** workflow generates an email from the latest real Unified Copilot result and keeps delivery separate from generation. The UI shows the source route/query, recipient, subject, body, draft type, approval state, safety result, and provider delivery result.
+The **Email Draft, Human Approval & Safe Delivery** workflow generates
+an email from the latest real Unified Copilot result and keeps delivery
+separate from generation. The UI shows the source route/query,
+recipient, subject, body, draft type, approval state, safety result, and
+provider delivery result.
 
--   Drafts begin in `pending_approval`; a pending draft cannot be delivered.
--   The user must explicitly **approve** or **reject** the draft in Streamlit.
--   An approved draft must also pass the outbound safety guard before any channel is invoked.
--   **Mock** mode exercises the complete approval/safety flow without external delivery.
--   **Gmail (REAL)** mode sends through the locally authorized Gmail API account and clearly marks the action as real delivery.
--   Successful Gmail delivery surfaces the provider message ID for E2E verification.
--   After a human decision or send attempt is recorded, the workflow is locked; the user must clear the workflow or generate a new draft before another delivery attempt. This prevents accidental duplicate sends from the same draft.
+-   Drafts begin in `pending_approval`; a pending draft cannot be
+    delivered.
+-   The user must explicitly **approve** or **reject** the draft in
+    Streamlit.
+-   An approved draft must also pass the outbound safety guard before
+    any channel is invoked.
+-   **Mock** mode exercises the complete approval/safety flow without
+    external delivery.
+-   **Gmail (REAL)** mode sends through the locally authorized Gmail API
+    account and clearly marks the action as real delivery.
+-   Successful Gmail delivery surfaces the provider message ID for E2E
+    verification.
+-   After a human decision or send attempt is recorded, the workflow is
+    locked; the user must clear the workflow or generate a new draft
+    before another delivery attempt. This prevents accidental duplicate
+    sends from the same draft.
 
-The current email workflow supports recommendation digests and `weekly_market_report` drafts. A market query such as `Tell me about the Irvine real estate market.` can therefore flow from the real LangGraph orchestrator into a weekly market email while retaining the same explicit approval and safety invariant.
+The current email workflow supports recommendation digests and
+`weekly_market_report` drafts. A market query such as
+`Tell me about the Irvine real estate market.` can therefore flow from
+the real LangGraph orchestrator into a weekly market email while
+retaining the same explicit approval and safety invariant.
 
 ## Technology Stack
 
-Python 3.10, LangGraph, LangChain, OpenAI embeddings/LLM providers, FAISS, NumPy, Pydantic, MySQL, FastAPI, Uvicorn, Streamlit, Pytest, Google Gmail API/OAuth, OpenClaw, WhatsApp, and `ThreadPoolExecutor`.
+Python 3.10, LangGraph, LangChain, OpenAI embeddings/LLM providers,
+FAISS, NumPy, Pydantic, MySQL, FastAPI, Uvicorn, Streamlit, Pytest,
+Google Gmail API/OAuth, Docker, OpenClaw, WhatsApp, and
+`ThreadPoolExecutor`.
 
 ## Local Setup
 
 ### Python Application
 
-```bash
+``` bash
 python -m venv .venv
 # Windows PowerShell: .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
@@ -1011,56 +1140,191 @@ python -m streamlit run src/app/streamlit_app.py
 uvicorn src.api.app:app --reload
 ```
 
-Create `.env` from `.env.example` and configure the local MySQL connection and model-provider credentials required by the capabilities you intend to run. The active-listing and sold-comparable tables, embedding artifacts, and knowledge artifacts must be available locally for their corresponding workflows. Internal MLS datasets, `.env`, OAuth credentials, OAuth tokens, and other secrets must not be committed.
+Create `.env` from `.env.example` and configure the local MySQL
+connection and model-provider credentials required by the capabilities
+you intend to run. The active-listing and sold-comparable tables,
+embedding artifacts, and knowledge artifacts must be available locally
+for their corresponding workflows. Internal MLS datasets, `.env`, OAuth
+credentials, OAuth tokens, and other secrets must not be committed.
+
+### Docker: Full Local Streamlit Application
+
+The repository includes a `Dockerfile` and `.dockerignore` for running
+the **full local Streamlit implementation** in Docker. This is separate
+from the privacy-safe public Streamlit Community Cloud deployment: the
+Dockerized local application retains the MySQL-backed search/market
+paths, full-corpus similar-home recommendation artifacts, local
+knowledge RAG artifacts, and optional real Gmail delivery.
+
+#### Prerequisites
+
+-   Docker Desktop with Linux containers / WSL 2 support on Windows.
+-   A populated local `.env` based on `.env.example`.
+-   The local MySQL service and required `idx_exchange` tables for
+    MySQL-backed workflows.
+-   Runtime listing and knowledge artifacts required by the full
+    application.
+-   For real Gmail delivery only, local OAuth files under `secrets/`.
+
+Verify Docker before building:
+
+``` powershell
+docker --version
+docker run hello-world
+```
+
+#### Build the Image
+
+From the repository root:
+
+``` powershell
+docker build -t idx-agentic-copilot .
+```
+
+The `.dockerignore` excludes local virtual environments, `.env` files,
+Gmail/OAuth secrets, development-only files, and embedding-generation
+checkpoints/samples that are not required by the application runtime.
+Full runtime artifacts used by similar-home recommendation and knowledge
+RAG remain available to the image.
+
+#### Run the Full App on Windows with Host MySQL
+
+The native Windows `.env` can continue to use:
+
+``` text
+MYSQL_HOST=localhost
+```
+
+Inside a Docker container, however, `localhost` refers to the container
+itself rather than the Windows host. Docker Desktop exposes the host
+through `host.docker.internal`, so the container overrides only
+`MYSQL_HOST` at runtime:
+
+``` powershell
+docker run --rm -p 8501:8501 `
+  --env-file .env `
+  -e MYSQL_HOST=host.docker.internal `
+  --name idx-copilot `
+  idx-agentic-copilot
+```
+
+Then open:
+
+``` text
+http://localhost:8501
+```
+
+This preserves the same `.env` for native Windows execution while
+allowing the containerized application to reach the MySQL service
+running on the Docker host.
+
+#### Run with Real Gmail Delivery Enabled
+
+Gmail OAuth files are deliberately excluded from the Docker image. To
+enable the Streamlit **Gmail (REAL)** delivery path, mount the local
+`secrets/` directory at runtime:
+
+``` powershell
+docker run --rm -p 8501:8501 `
+  --env-file .env `
+  -e MYSQL_HOST=host.docker.internal `
+  --mount type=bind,source="${PWD}\secrets",target=/app/secrets `
+  --name idx-copilot `
+  idx-agentic-copilot
+```
+
+The mount is intentionally read/write because the Gmail OAuth flow may
+refresh and rewrite `secrets/gmail_token.json`. The credential and token
+files remain on the host and are not copied into the Docker image.
+
+The validated local Docker E2E path includes:
+
+``` text
+Dockerized Streamlit
+    → LangGraph Unified Orchestrator
+    → MySQL on Windows host
+    → Search / Market / Similar-Home / Knowledge capabilities
+    → Email Draft
+    → Explicit Human Approval
+    → Outbound Safety Check
+    → Gmail API
+    → Real Delivery
+```
+
+A real Gmail Docker smoke test successfully completed the
+approval/safety flow and returned a Gmail provider message ID.
+Similar-home recommendation was also revalidated after Docker artifact
+pruning to confirm that the required full-corpus runtime embeddings and
+metadata remained available.
+
+> **Security boundary:** do not remove `.env` or `secrets/` from
+> `.dockerignore` merely to make local integrations work. Supply
+> environment variables with `--env-file` / `-e` and supply credential
+> files through runtime mounts instead of baking them into the image.
 
 ### OpenClaw + Real WhatsApp
 
-OpenClaw is a separate local runtime dependency; it is not installed by the Python `requirements.txt`. After installing/configuring OpenClaw and installing the repository skill, the adapter can be smoke-tested directly:
+OpenClaw is a separate local runtime dependency; it is not installed by
+the Python `requirements.txt`. After installing/configuring OpenClaw and
+installing the repository skill, the adapter can be smoke-tested
+directly:
 
-```bash
+``` bash
 python -m scripts.openclaw_copilot_adapter "What does DOM mean in real estate?" --json
 ```
 
 Start the local gateway in a dedicated terminal and leave it running:
 
-```bash
+``` bash
 openclaw gateway --port 18789
 ```
 
-After pairing the WhatsApp channel, verify runtime/channel health from another terminal:
+After pairing the WhatsApp channel, verify runtime/channel health from
+another terminal:
 
-```bash
+``` bash
 openclaw channels status --channel whatsapp --probe
 ```
 
-The expected final state is a reachable gateway with WhatsApp enabled, configured, linked, running, connected, and healthy. The OpenClaw skill delegates requests to `scripts/openclaw_copilot_adapter.py`; it should not bypass the LangGraph application to query MySQL directly.
+The expected final state is a reachable gateway with WhatsApp enabled,
+configured, linked, running, connected, and healthy. The OpenClaw skill
+delegates requests to `scripts/openclaw_copilot_adapter.py`; it should
+not bypass the LangGraph application to query MySQL directly.
 
 ### Gmail OAuth + Real Delivery
 
-Real Gmail delivery requires a Google OAuth Desktop client credential file and a locally generated authorization token. The project uses:
+Real Gmail delivery requires a Google OAuth Desktop client credential
+file and a locally generated authorization token. The project uses:
 
-```text
+``` text
 secrets/gmail_credentials.json
 secrets/gmail_token.json
 ```
 
-Both files are local secrets and must remain outside version control. Authorize or re-authorize Gmail with:
+Both files are local secrets and must remain outside version control.
+Authorize or re-authorize Gmail with:
 
-```bash
+``` bash
 python -m scripts.authorize_gmail
 ```
 
-A direct provider smoke test is available for explicit real-delivery validation:
+A direct provider smoke test is available for explicit real-delivery
+validation:
 
-```bash
+``` bash
 python -m scripts.smoke_send_gmail --to <recipient@example.com>
 ```
 
-The smoke script requires an explicit confirmation before sending. For the application-level flow, use the Streamlit **Email Approval** workflow: generate a new draft, select **Mock** or **Gmail (REAL)**, record an explicit human decision, allow the outbound safety check to run, and then deliver. Do not commit Gmail credentials/tokens or use real-delivery mode in a public deployment.
+The smoke script requires an explicit confirmation before sending. For
+the application-level flow, use the Streamlit **Email Approval**
+workflow: generate a new draft, select **Mock** or **Gmail (REAL)**,
+record an explicit human decision, allow the outbound safety check to
+run, and then deliver. Do not commit Gmail credentials/tokens or use
+real-delivery mode in a public deployment.
 
 ## Testing and Validation
 
-```bash
+``` bash
 pytest -v
 python -m src.dev_evaluate_retrieval
 python -m src.dev_evaluate_knowledge_retrieval              # default Top-6
@@ -1073,9 +1337,12 @@ python -m src.dev_benchmark_candidate_parallel
 python -m pytest tests/test_orchestration_capabilities.py tests/test_orchestrator.py tests/test_orchestration_adapters.py tests/test_orchestration_composition.py tests/test_api.py tests/test_memory_store.py -v
 ```
 
-The final full repository regression suite completes with **268 passing tests**. This includes the original property-search, compliance, memory,
+The final full repository regression suite completes with **268 passing
+tests**. This includes the original property-search, compliance, memory,
 market, recommendation, retrieval, and Week 8 knowledge coverage plus
-the Week 9 router/orchestrator/API coverage and Weeks 10--11 email approval, outbound safety, Gmail channel, OpenClaw runtime, WhatsApp channel, and E2E regression coverage.
+the Week 9 router/orchestrator/API coverage and Weeks 10--11 email
+approval, outbound safety, Gmail channel, OpenClaw runtime, WhatsApp
+channel, and E2E regression coverage.
 
 Validation now covers workflow routing, compliance, session memory,
 repository/query behavior, market and recommendation scoring,
@@ -1087,7 +1354,9 @@ interface.
 
 ## Repository Structure
 
-```text
+``` text
+Dockerfile                    # Full local Streamlit Docker image
+.dockerignore                 # Excludes secrets, local envs, and non-runtime build artifacts
 streamlit_public_app.py       # Privacy-safe Streamlit Community Cloud entry point
 
 src/
@@ -1186,6 +1455,26 @@ suite completed with **215 passing tests**. Real smoke tests
 successfully exercised both the composition root and FastAPI `/chat`
 knowledge route.
 
-Weeks 10--11 complete the external-channel and guarded-outbound closeout. The existing LangGraph Unified Copilot is exposed to OpenClaw through a thin adapter and a real WhatsApp channel, while email drafts remain behind explicit human approval, outbound safety validation, and duplicate-send protection. Weekly Market Report requests reuse the existing market route and trend model rather than creating a parallel reporting agent. Real Gmail delivery and real WhatsApp E2E flows were both validated.
+Weeks 10--11 complete the external-channel and guarded-outbound
+closeout. The existing LangGraph Unified Copilot is exposed to OpenClaw
+through a thin adapter and a real WhatsApp channel, while email drafts
+remain behind explicit human approval, outbound safety validation, and
+duplicate-send protection. Weekly Market Report requests reuse the
+existing market route and trend model rather than creating a parallel
+reporting agent. Real Gmail delivery and real WhatsApp E2E flows were
+both validated.
 
-Final regression validation completed with **268 passing automated tests**. Manual E2E validation additionally covered the Streamlit search/knowledge/market/mixed workflows, weekly market report generation, Gmail OAuth + real delivery + duplicate-send protection, and real WhatsApp knowledge/market/mixed requests through OpenClaw.
+The full local Streamlit application is also containerized with Docker.
+The validated container runtime uses runtime-injected `.env`
+configuration, `host.docker.internal` to reach the Windows-hosted MySQL
+service, and a bind-mounted local Gmail OAuth directory for real
+delivery without baking credentials into the image. Docker E2E
+validation covered mixed search + market orchestration, full-corpus
+similar-home recommendation after runtime-artifact pruning, and
+human-approved real Gmail delivery.
+
+Final regression validation completed with **268 passing automated
+tests**. Manual E2E validation additionally covered the Streamlit
+search/knowledge/market/mixed workflows, weekly market report
+generation, Gmail OAuth + real delivery + duplicate-send protection, and
+real WhatsApp knowledge/market/mixed requests through OpenClaw.
