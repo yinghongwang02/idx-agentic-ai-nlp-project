@@ -1516,8 +1516,8 @@ partial-failure preservation, a shared composition root, FastAPI service
 endpoints, structured latency/error logging, a lightweight pluggable
 `MemoryStore`, and a fourth Streamlit **Unified Copilot** tab with
 separate history. The focused Week 9 orchestration/API/memory regression
-run completed with **38 passing tests**, while the final full repository
-suite completed with **215 passing tests**. Real smoke tests
+run completed with **38 passing tests**, while the full repository suite 
+at the end of Week 9 contained  **215 passing tests**. Real smoke tests
 successfully exercised both the composition root and FastAPI `/chat`
 knowledge route.
 
