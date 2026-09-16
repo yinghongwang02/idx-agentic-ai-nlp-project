@@ -28,6 +28,39 @@ The system supports four complementary user workflows:
 > This repository contains my individual project work for the IDX
 > Exchange Summer 2026 internship. Internal MLS data is not included.
 
+
+## Public Streamlit Portfolio Demo
+
+**Live demo:** https://idx-agentic-ai-copilot.streamlit.app/
+
+A privacy-safe version of the Real Estate Agentic Copilot is deployed on Streamlit Community Cloud through `streamlit_public_app.py`. The hosted application demonstrates five core capabilities: structured property search, market intelligence, hybrid similar-home recommendation, grounded knowledge RAG, and unified multi-capability orchestration.
+
+> **Portfolio demo environment:** The hosted deployment intentionally uses synthetic real-estate data and public-safe knowledge artifacts. Private MLS data, database credentials, OAuth secrets, and production messaging integrations are not included in the hosted environment.
+
+The hosted demo and the full local system therefore use different data and integration boundaries by design:
+
+| Area | Hosted Streamlit demo | Full local implementation |
+| --- | --- | --- |
+| Active listings | Small synthetic portfolio dataset | MySQL-backed MLS corpus (53,122 records in the project dataset) |
+| Sold comparables | 288 synthetic sold comps across four demo markets | MySQL-backed sold-comparable corpus (87,157 records in the project dataset) |
+| Listing embeddings | Synthetic demo-listing embeddings | Full-corpus index covering 52,794 active listings |
+| Knowledge RAG | Public-safe, self-contained real-estate knowledge artifacts | Broader project knowledge corpus and local FAISS artifacts |
+| Gmail | Disabled | Human-approved Gmail API delivery available locally |
+| WhatsApp / OpenClaw | Disabled | Real WhatsApp channel through the local OpenClaw runtime |
+| Secrets / private infrastructure | Excluded | Supplied locally through environment variables and local credential files |
+
+This separation keeps the public deployment reproducible and safe to share while preserving the architecture of the production-style local implementation. The public composition root injects synthetic repositories and public-safe retrieval artifacts into the same capability boundaries used by the application rather than exposing private MLS infrastructure. As a result, the hosted app is intended to demonstrate system behavior and architecture, not the scale or contents of the private/local datasets.
+
+### Run the Public Demo Locally
+
+```bash
+pip install -r requirements.txt
+# Configure OPENAI_API_KEY in the environment
+streamlit run streamlit_public_app.py
+```
+
+The public demo does not require the local MySQL database, Gmail OAuth credentials, or OpenClaw/WhatsApp setup.
+
 ## Key Engineering Highlights
 
 -   **LangGraph real-estate copilot** with natural-language intent
@@ -1055,7 +1088,10 @@ interface.
 ## Repository Structure
 
 ```text
+streamlit_public_app.py       # Privacy-safe Streamlit Community Cloud entry point
+
 src/
+├── public_demo/      # Synthetic repositories and public composition root
 ├── agents/          # Intent, compliance, market, email-draft, and analysis agents
 ├── api/             # FastAPI application and public request/response schemas
 ├── app/             # Streamlit UI, including Email Approval / delivery workflow
@@ -1107,7 +1143,10 @@ docs/
 ├── real_estate_terminology.md
 └── real_estate_law.md
 
+data/public_demo/                # Synthetic active listings, sold comps, and public-safe knowledge
+
 artifacts/
+├── public_demo/     # Public listing/knowledge embedding artifacts
 ├── benchmarks/      # Performance / retrieval evaluation outputs
 ├── embeddings/      # Local listing embedding index artifacts
 └── knowledge/       # Local knowledge-RAG artifacts
